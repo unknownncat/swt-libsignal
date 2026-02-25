@@ -65,6 +65,7 @@ interface WorkerState {
 const WORKER_CRASH_ERROR = 'async worker crashed while processing jobs'
 
 function createWorker(): Worker {
+    // TODO(protocol-risk): keep worker-by-file (no eval) to avoid reintroducing dynamic worker source execution.
     return new Worker(new URL('./signal-worker.mjs', import.meta.url))
 }
 

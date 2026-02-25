@@ -195,6 +195,7 @@ export class SessionBuilder {
         // X3DH variant route B:
         // - identity keys remain Ed25519 for trust/signature verification
         // - DH uses explicit Ed25519->X25519 conversions for identity material
+        // TODO(protocol-risk): implicit identity private-key fallback (non-64 bytes treated as already X25519).
         const ourIdentityDhPriv = ourIdentityKey.privKey.length === 64
             ? signalCrypto.convertIdentityPrivateToX25519(ourIdentityKey.privKey)
             : ourIdentityKey.privKey
@@ -203,6 +204,7 @@ export class SessionBuilder {
         try {
             theirIdentityDhPub = signalCrypto.convertIdentityPublicToX25519(theirIdentityPubKey)
         } catch {
+            // TODO(protocol-risk): implicit Ed25519->X25519 fallback path (legacy downgrade behavior).
             // Legacy mode: some educational setups persist identity directly as X25519.
             theirIdentityDhPub = theirIdentityPubKey
         }

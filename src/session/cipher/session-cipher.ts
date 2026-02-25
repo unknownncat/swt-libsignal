@@ -114,6 +114,7 @@ export class SessionCipher {
 
             let result: EncryptResult
             try {
+                // TODO(protocol-risk): payload crypto is AES-256-GCM and uses derived aadKey.slice(0,16) as AAD.
                 const encrypted = await crypto.encrypt(cipherKey, data, { aad: aadKey.subarray(0, 16) })
 
                 const packedCiphertext = new Uint8Array(
@@ -138,6 +139,7 @@ export class SessionCipher {
                 macInput[66] = this._encodeTupleByte(PROTOCOL_VERSION, PROTOCOL_VERSION)
                 macInput.set(msgBuf, 67)
 
+                // TODO(protocol-risk): transport MAC currently truncates HMAC-SHA256 to 8 bytes.
                 const mac = crypto.hmacSha256(macKey, macInput)
 
                 const body = new Uint8Array(msgBuf.byteLength + 9)
@@ -319,6 +321,7 @@ export class SessionCipher {
         const messageProto = messageBuffer.subarray(1, messageEnd)
         const message = WhisperMessageEncoder.decodeWhisperMessage(messageProto)
 
+        // TODO(protocol-risk): ratchet state mutates before full authentication/decrypt success.
         await this.maybeStepRatchet(session, message.ephemeralKey, message.previousCounter)
 
         const chain = session.getChain(message.ephemeralKey)
@@ -326,6 +329,7 @@ export class SessionCipher {
             throw new SessionStateError('Tried to decrypt on a sending chain')
         }
 
+        // TODO(protocol-risk): chain/message-key counters mutate before MAC verification.
         this.fillMessageKeys(chain, message.counter)
 
         if (!chain.messageKeys.has(message.counter)) {

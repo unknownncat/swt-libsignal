@@ -26,6 +26,7 @@ function encrypt(
     plaintext: Uint8Array,
     options?: { aad?: Uint8Array; iv?: Uint8Array }
 ): { ciphertext: Uint8Array; iv: Uint8Array; tag: Uint8Array } {
+    // TODO(protocol-risk): default payload primitive is AES-256-GCM (education/proprietary wire mode).
     if (key.length !== KEY_LENGTH) {
         throw new Error('Key must be 32 bytes')
     }
@@ -66,6 +67,7 @@ function decrypt(
     data: { ciphertext: Uint8Array; iv: Uint8Array; tag: Uint8Array },
     options?: { aad?: Uint8Array }
 ): Uint8Array {
+    // TODO(protocol-risk): decrypt expects GCM payload tuple {iv,ciphertext,tag}; SessionCipher adds outer HMAC separately.
     if (key.length !== KEY_LENGTH) {
         throw new Error('Key must be 32 bytes')
     }
