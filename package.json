@@ -1,6 +1,6 @@
 {
   "name": "@unknownncat/swt-libsignal",
-  "version": "1.3.4",
+  "version": "2.0.0",
   "description": "Reimplementação do protocolo Signal usando libsodium.",
   "type": "module",
   "main": "./dist/index.js",
