@@ -1,6 +1,7 @@
 import { pathToFileURL } from 'node:url'
 import { runCryptoRuntimeCheck } from './crypto-runtime-check'
 import { runGroupRuntimeCheck } from './group-runtime-check'
+import { runProductionReadinessRuntimeCheck } from './production-readiness-runtime-check'
 import { runRepositoryRuntimeCheck } from './repository-runtime-check'
 import { runSessionRuntimeCheck } from './session-runtime-check'
 import { runStorageRuntimeCheck } from './storage-runtime-check'
@@ -11,6 +12,7 @@ export interface DocsRuntimeSummary {
   readonly group: Awaited<ReturnType<typeof runGroupRuntimeCheck>>
   readonly repository: Awaited<ReturnType<typeof runRepositoryRuntimeCheck>>
   readonly storage: Awaited<ReturnType<typeof runStorageRuntimeCheck>>
+  readonly production: Awaited<ReturnType<typeof runProductionReadinessRuntimeCheck>>
 }
 
 export async function runAllExamples(): Promise<DocsRuntimeSummary> {
@@ -20,6 +22,7 @@ export async function runAllExamples(): Promise<DocsRuntimeSummary> {
     group: await runGroupRuntimeCheck(),
     repository: await runRepositoryRuntimeCheck(),
     storage: await runStorageRuntimeCheck(),
+    production: await runProductionReadinessRuntimeCheck(),
   }
 }
 

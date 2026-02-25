@@ -7,6 +7,7 @@ Scripts de validação real usados pela suíte de testes:
 - `group-runtime-check.ts`
 - `repository-runtime-check.ts`
 - `storage-runtime-check.ts`
+- `production-readiness-runtime-check.ts`
 - `run-all.ts`
 
 ## Executar manualmente

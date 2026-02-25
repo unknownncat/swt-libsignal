@@ -24,6 +24,8 @@ export interface SignalAsyncAPI {
 export interface CreateSignalAsyncOptions {
     readonly workers?: number
     readonly maxPendingJobs?: number
+    readonly queueOnBackpressure?: boolean
+    readonly maxQueuedJobs?: number
 }
 
 type SignalWorkerRequest =
@@ -64,6 +66,12 @@ interface WorkerState {
     alive: boolean
 }
 
+interface BufferedRequest {
+    readonly request: SignalWorkerRequest
+    readonly resolve: (value: unknown) => void
+    readonly reject: (error: Error) => void
+}
+
 const WORKER_CRASH_ERROR = 'async worker crashed while processing jobs'
 
 function createWorker(): Worker {
@@ -90,12 +98,58 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
     if (!Number.isInteger(maxPendingJobs) || maxPendingJobs <= 0) throw new Error('maxPendingJobs must be a positive integer')
 
     const maxPendingPerWorker = Math.max(1, Math.floor(maxPendingJobs / workerCount))
+    const queueOnBackpressure = options.queueOnBackpressure ?? false
+    const maxQueuedJobs = options.maxQueuedJobs ?? maxPendingJobs * 4
+    if (!Number.isInteger(maxQueuedJobs) || maxQueuedJobs <= 0) throw new Error('maxQueuedJobs must be a positive integer')
 
     const workers: WorkerState[] = []
     const pending = new Map<number, PendingJob>()
+    const buffered = new Array<BufferedRequest>()
     let nextRequestId = 1
     let roundRobin = 0
     let closed = false
+
+    const selectWorkerIndex = (): number => {
+        for (let i = 0; i < workers.length; i++) {
+            const candidateIndex = (roundRobin + i) % workers.length
+            const candidate = workers[candidateIndex]!
+            if (!candidate.alive) continue
+            if (candidate.pendingCount >= maxPendingPerWorker) continue
+            return candidateIndex
+        }
+        return -1
+    }
+
+    const dispatchToWorker = (
+        workerIndex: number,
+        request: SignalWorkerRequest,
+        resolve: (value: unknown) => void,
+        reject: (error: Error) => void
+    ): void => {
+        const state = workers[workerIndex]!
+        const id = nextRequestId++
+        roundRobin = workerIndex + 1
+        state.pendingCount += 1
+
+        pending.set(id, {
+            workerIndex,
+            reject,
+            resolve,
+        })
+
+        state.worker.postMessage({ id, request })
+    }
+
+    const drainBuffered = (): void => {
+        if (closed) return
+        while (buffered.length > 0) {
+            const workerIndex = selectWorkerIndex()
+            if (workerIndex < 0) return
+            const next = buffered.shift()
+            if (!next) return
+            dispatchToWorker(workerIndex, next.request, next.resolve, next.reject)
+        }
+    }
 
     const rejectWorkerJobs = (workerIndex: number, reason: Error): void => {
         for (const [id, job] of pending) {
@@ -116,10 +170,12 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
 
             if (!envelope.response.ok) {
                 job.reject(new Error(envelope.response.message))
+                drainBuffered()
                 return
             }
 
             job.resolve(envelope.response.value)
+            drainBuffered()
         })
 
         const reviveWorker = (): void => {
@@ -132,6 +188,7 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
             state.worker = createWorker()
             state.alive = true
             attachHandlers(state, workerIndex)
+            drainBuffered()
         }
 
         worker.on('error', reviveWorker)
@@ -149,34 +206,33 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
 
     const run = async <K extends keyof WorkerResultMap>(request: Extract<SignalWorkerRequest, { readonly type: K }>): Promise<WorkerResultMap[K]> => {
         if (closed) throw new Error('async worker pool is closed')
-        let selectedIndex = -1
-        for (let i = 0; i < workers.length; i++) {
-            const candidateIndex = (roundRobin + i) % workers.length
-            const candidate = workers[candidateIndex]!
-            if (!candidate.alive) continue
-            if (candidate.pendingCount >= maxPendingPerWorker) continue
-            selectedIndex = candidateIndex
-            break
-        }
-
-        if (selectedIndex < 0) {
-            throw new Error('async worker backpressure: too many pending jobs')
-        }
-
-        const state = workers[selectedIndex]!
-        roundRobin = selectedIndex + 1
-
-        const id = nextRequestId++
-        state.pendingCount += 1
-
         return await new Promise<WorkerResultMap[K]>((resolve, reject) => {
-            pending.set(id, {
-                workerIndex: selectedIndex,
-                reject,
-                resolve: resolve as (value: unknown) => void,
-            })
+            const selectedIndex = selectWorkerIndex()
+            if (selectedIndex >= 0) {
+                dispatchToWorker(
+                    selectedIndex,
+                    request,
+                    resolve as (value: unknown) => void,
+                    reject
+                )
+                return
+            }
 
-            state.worker.postMessage({ id, request })
+            if (!queueOnBackpressure) {
+                reject(new Error('async worker backpressure: too many pending jobs'))
+                return
+            }
+
+            if (buffered.length >= maxQueuedJobs) {
+                reject(new Error('async worker backpressure queue full'))
+                return
+            }
+
+            buffered.push({
+                request,
+                resolve: resolve as (value: unknown) => void,
+                reject
+            })
         })
     }
 
@@ -231,6 +287,10 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
                 job.reject(new Error('async worker pool is closed'))
             }
             pending.clear()
+            while (buffered.length > 0) {
+                const next = buffered.shift()
+                next?.reject(new Error('async worker pool is closed'))
+            }
             await Promise.all(
                 workers.map(async (state) => {
                     state.alive = false

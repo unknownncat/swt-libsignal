@@ -81,6 +81,13 @@ describe('scripts and docs examples', () => {
     expect(summary.storage.registrationId).toBe(777)
     expect(summary.storage.managerValueLength).toBe(4)
     expect(summary.storage.persistedValueLength).toBe(5)
+
+    expect(summary.production.firstUseApproved).toBe(true)
+    expect(summary.production.rotationApproved).toBe(true)
+    expect(summary.production.previousKeyRejectedAfterRotation).toBe(true)
+    expect(summary.production.atomicGuardTriggered).toBe(true)
+    expect(summary.production.queuedBurstSucceeded).toBe(true)
+    expect(summary.production.queueFullTriggered).toBe(true)
   })
 
   it('keeps an isolated temp folder setup for script side effects', () => {

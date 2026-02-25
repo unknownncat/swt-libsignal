@@ -20,15 +20,15 @@ Explicação: instala a biblioteca publicada no npm.
 ## Exemplo rápido
 
 ```ts
-import { crypto } from '@unknownncat/swt-libsignal'
+import { crypto } from "@unknownncat/swt-libsignal";
 
-const key = new Uint8Array(32).fill(7)
-const message = new TextEncoder().encode('hello')
+const key = new Uint8Array(32).fill(7);
+const message = new TextEncoder().encode("hello");
 
-const encrypted = crypto.encrypt(key, message)
-const decrypted = crypto.decrypt(key, encrypted)
+const encrypted = crypto.encrypt(key, message);
+const decrypted = crypto.decrypt(key, encrypted);
 
-console.log(new TextDecoder().decode(decrypted))
+console.log(new TextDecoder().decode(decrypted));
 ```
 
 Explicação: usa AES-256-GCM da API `crypto` para cifrar e decifrar no mesmo processo.
@@ -41,6 +41,7 @@ Explicação: usa AES-256-GCM da API `crypto` para cifrar e decifrar no mesmo pr
 - [group-runtime-check.ts](./examples/group-runtime-check.ts)
 - [repository-runtime-check.ts](./examples/repository-runtime-check.ts)
 - [storage-runtime-check.ts](./examples/storage-runtime-check.ts)
+- [production-readiness-runtime-check.ts](./examples/production-readiness-runtime-check.ts)
 
 Os scripts acima são executados na suíte de testes para garantir que os exemplos documentados continuem válidos.
 

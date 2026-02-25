@@ -14,6 +14,13 @@ type SerializedRecord = ReturnType<SessionRecord['serialize']>
 type IdentityTuple = readonly [pubKey: Uint8Array, privKey: Uint8Array]
 export interface SessionStorageOptions {
     trustOnFirstUse?: boolean
+    onFirstUseIdentity?: (addressName: string, identityKey: Uint8Array) => MaybePromise<boolean>
+    onIdentityMismatch?: (
+        addressName: string,
+        existingIdentityKey: Uint8Array,
+        incomingIdentityKey: Uint8Array
+    ) => MaybePromise<'reject' | 'replace'>
+    requireAtomicSessionAndPreKey?: boolean
 }
 
 type LegacyIdentityValue = { readonly pubKey: string; readonly privKey: string }
@@ -49,6 +56,9 @@ function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
 
 export function createSessionStorage(adapter: StorageAdapter<unknown>, options: SessionStorageOptions = {}) {
     const trustOnFirstUse = options.trustOnFirstUse ?? true
+    const onFirstUseIdentity = options.onFirstUseIdentity
+    const onIdentityMismatch = options.onIdentityMismatch
+    const requireAtomicSessionAndPreKey = options.requireAtomicSessionAndPreKey ?? false
 
     return {
         async isTrustedIdentity(addressName: string, identityKey: Uint8Array): Promise<boolean> {
@@ -56,13 +66,26 @@ export function createSessionStorage(adapter: StorageAdapter<unknown>, options: 
             const stored = await maybeAwait(getValue(adapter, key) as MaybePromise<Uint8Array | string | undefined>)
 
             if (!stored) {
-                if (!trustOnFirstUse) return false
+                if (onFirstUseIdentity) {
+                    const approved = await maybeAwait(onFirstUseIdentity(addressName, identityKey))
+                    if (!approved) return false
+                } else if (!trustOnFirstUse) {
+                    return false
+                }
                 await maybeAwait(setValue(adapter, key, identityKey))
                 return true
             }
 
             const storedBytes = stored instanceof Uint8Array ? stored : fromBase64(stored)
-            return constantTimeEqual(storedBytes, identityKey)
+            if (constantTimeEqual(storedBytes, identityKey)) return true
+
+            if (!onIdentityMismatch) return false
+
+            const decision = await maybeAwait(onIdentityMismatch(addressName, storedBytes, identityKey))
+            if (decision !== 'replace') return false
+
+            await maybeAwait(setValue(adapter, key, identityKey))
+            return true
         },
 
         async loadSession(addressName: string): Promise<SessionRecord | undefined> {
@@ -128,6 +151,8 @@ export function createSessionStorage(adapter: StorageAdapter<unknown>, options: 
                     await maybeAwait(setValue(tx, sessionKey(addressName), record.serialize()))
                     await maybeAwait(deleteValue(tx, preKeyKey(preKeyId)))
                 }))
+            } else if (requireAtomicSessionAndPreKey) {
+                throw new Error('Atomic session+prekey operation requires adapter.transaction() support')
             } else {
                 await maybeAwait(setValue(adapter, sessionKey(addressName), record.serialize()))
                 await maybeAwait(deleteValue(adapter, preKeyKey(preKeyId)))
