@@ -14,14 +14,14 @@ describe('session integration flow', () => {
     const aliceStorage = createSessionStorage(aliceAdapter)
     const bobStorage = createSessionStorage(bobAdapter)
 
-    const aliceDhIdentity = await signalCrypto.generateDHKeyPair()
-    const bobDhIdentity = await signalCrypto.generateDHKeyPair()
+    const aliceIdentity = await signalCrypto.generateIdentityKeyPair()
+    const bobIdentity = await signalCrypto.generateIdentityKeyPair()
     const bobSignIdentity = await signalCrypto.generateIdentityKeyPair()
     const aliceReg = generateRegistrationId()
     const bobReg = generateRegistrationId()
 
-    await aliceStorage.storeBootstrap({ pubKey: aliceDhIdentity.publicKey, privKey: aliceDhIdentity.privateKey }, aliceReg)
-    await bobStorage.storeBootstrap({ pubKey: bobDhIdentity.publicKey, privKey: bobDhIdentity.privateKey }, bobReg)
+    await aliceStorage.storeBootstrap({ pubKey: aliceIdentity.publicKey, privKey: aliceIdentity.privateKey }, aliceReg)
+    await bobStorage.storeBootstrap({ pubKey: bobIdentity.publicKey, privKey: bobIdentity.privateKey }, bobReg)
 
     const bobSignedPreKey = await generateSignedPreKey(bobSignIdentity, 11)
     const bobPreKey = await generatePreKey(7)

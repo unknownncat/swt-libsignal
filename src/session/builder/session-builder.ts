@@ -11,7 +11,9 @@ import type {
     PreKeyBundle,
     PreKeyWhisperMessage,
     SessionBuilderStorage,
-    KeyPair
+    KeyPair,
+    SessionBuilderOptions,
+    CompatMode
 } from './types'
 
 import { HKDF_INFO_WHISPER_TEXT, TEXT_ENCODER, zero32 } from '../../internal/constants/crypto'
@@ -21,6 +23,9 @@ const HKDF_INFO_RATCHET = TEXT_ENCODER.encode('WhisperRatchet')
 export class SessionBuilder {
     private readonly addr: ProtocolAddress
     private readonly storage: SessionBuilderStorage
+    private readonly compatMode: CompatMode
+    private readonly warnCompat: (message: string) => void
+    private legacyWarningEmitted = false
 
     private assertNotAborted(signal: AbortSignal): void {
         if (signal.aborted) {
@@ -29,9 +34,11 @@ export class SessionBuilder {
         }
     }
 
-    constructor(storage: SessionBuilderStorage, protocolAddress: ProtocolAddress) {
+    constructor(storage: SessionBuilderStorage, protocolAddress: ProtocolAddress, options: SessionBuilderOptions = {}) {
         this.addr = protocolAddress
         this.storage = storage
+        this.compatMode = options.compatMode ?? 'strict'
+        this.warnCompat = options.warn ?? ((message: string) => { console.warn(message) })
     }
 
     async initOutgoing(device: PreKeyBundle): Promise<void> {
@@ -195,19 +202,8 @@ export class SessionBuilder {
         // X3DH variant route B:
         // - identity keys remain Ed25519 for trust/signature verification
         // - DH uses explicit Ed25519->X25519 conversions for identity material
-        // TODO(protocol-risk): implicit identity private-key fallback (non-64 bytes treated as already X25519).
-        const ourIdentityDhPriv = ourIdentityKey.privKey.length === 64
-            ? signalCrypto.convertIdentityPrivateToX25519(ourIdentityKey.privKey)
-            : ourIdentityKey.privKey
-
-        let theirIdentityDhPub = theirIdentityPubKey
-        try {
-            theirIdentityDhPub = signalCrypto.convertIdentityPublicToX25519(theirIdentityPubKey)
-        } catch {
-            // TODO(protocol-risk): implicit Ed25519->X25519 fallback path (legacy downgrade behavior).
-            // Legacy mode: some educational setups persist identity directly as X25519.
-            theirIdentityDhPub = theirIdentityPubKey
-        }
+        const ourIdentityDhPriv = this.resolveOurIdentityDhPrivateKey(ourIdentityKey.privKey)
+        const theirIdentityDhPub = this.resolveTheirIdentityDhPublicKey(theirIdentityPubKey)
 
         // X3DH DH Calculations (RFC order correto):
         // a1 = DH(ourIdentity, theirSigned)
@@ -309,5 +305,53 @@ export class SessionBuilder {
             result.push(hkdf.subarray(i * 32, (i + 1) * 32))
         }
         return result
+    }
+
+    private resolveOurIdentityDhPrivateKey(identityPrivateKey: Uint8Array): Uint8Array {
+        if (identityPrivateKey.length === 64) {
+            try {
+                return signalCrypto.convertIdentityPrivateToX25519(identityPrivateKey)
+            } catch (error) {
+                throw new Error('X3DH strict mode rejected local identity private key conversion (Ed25519->X25519 failed)', {
+                    cause: error instanceof Error ? error : undefined
+                })
+            }
+        }
+
+        if (identityPrivateKey.length === 32) {
+            if (this.compatMode === 'legacy') {
+                this.warnLegacyDowngradeOnce('using raw local X25519 identity private key (interop fallback)')
+                return identityPrivateKey
+            }
+
+            throw new Error('X3DH strict mode requires a 64-byte Ed25519 local identity private key')
+        }
+
+        throw new Error(`Invalid local identity private key length for X3DH: ${identityPrivateKey.length}`)
+    }
+
+    private resolveTheirIdentityDhPublicKey(theirIdentityPubKey: Uint8Array): Uint8Array {
+        if (theirIdentityPubKey.length !== 32) {
+            throw new Error(`Invalid remote identity public key length for X3DH: ${theirIdentityPubKey.length}`)
+        }
+
+        try {
+            return signalCrypto.convertIdentityPublicToX25519(theirIdentityPubKey)
+        } catch (error) {
+            if (this.compatMode === 'legacy') {
+                this.warnLegacyDowngradeOnce('using raw remote identity key as X25519 (interop fallback)')
+                return theirIdentityPubKey
+            }
+
+            throw new Error('X3DH strict mode rejected remote identity key conversion (Ed25519->X25519 failed)', {
+                cause: error instanceof Error ? error : undefined
+            })
+        }
+    }
+
+    private warnLegacyDowngradeOnce(reason: string): void {
+        if (this.legacyWarningEmitted) return
+        this.legacyWarningEmitted = true
+        this.warnCompat(`[swt-libsignal][x3dh][legacy] ${reason}`)
     }
 }

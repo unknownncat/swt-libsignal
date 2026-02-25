@@ -1,6 +1,13 @@
 import type { SessionRecord, SessionEntry, PendingPreKey } from '../record/index'
 import type { MaybePromise } from '../storage/types'
 
+export type CompatMode = 'strict' | 'legacy'
+
+export interface SessionBuilderOptions {
+    compatMode?: CompatMode
+    warn?: (message: string) => void
+}
+
 export interface PreKeyWhisperMessage {
     identityKey: Uint8Array
     registrationId: number
