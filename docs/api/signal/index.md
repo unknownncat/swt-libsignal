@@ -1,6 +1,6 @@
 # Signal layer
 
-Esta seção documenta a camada de compatibilidade inspirada no `Baileys/src/Signal`, implementada sobre os módulos da biblioteca.
+Esta seção documenta a camada de compatibilidade inspirada no [Baileys](https://github.com/WhiskeySockets/Baileys/tree/master/src/Signal), implementada sobre os módulos da biblioteca.
 
 ## Módulos
 
@@ -11,13 +11,13 @@ Esta seção documenta a camada de compatibilidade inspirada no `Baileys/src/Sig
 ## Exemplo rápido
 
 ```ts
-import { makeLibSignalRepository } from '@unknownncat/swt-libsignal'
+import { makeLibSignalRepository } from "@unknownncat/swt-libsignal";
 
-const repository = makeLibSignalRepository(store)
+const repository = makeLibSignalRepository(store);
 const encrypted = await repository.encryptMessage({
-  jid: 'peer.1',
-  data: new TextEncoder().encode('hello'),
-})
+  jid: "peer.1",
+  data: new TextEncoder().encode("hello"),
+});
 ```
 
 Explicação: o repositório encapsula `SessionBuilder`, `SessionCipher` e fluxo de grupo num contrato único.
