@@ -8,7 +8,10 @@ export function assertUint8(value: unknown): asserts value is Uint8Array {
 }
 
 export function toBase64(u: Uint8Array): string {
-    return Buffer.from(u).toString('base64')
+    const view = Buffer.isBuffer(u)
+        ? u
+        : Buffer.from(u.buffer, u.byteOffset, u.byteLength)
+    return view.toString('base64')
 }
 
 export function fromBase64(b64: string): Uint8Array {

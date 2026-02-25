@@ -17,10 +17,6 @@ function toBufferView(data: Uint8Array): Buffer {
         : Buffer.from(data.buffer, data.byteOffset, data.byteLength)
 }
 
-function wipe(buf: Buffer) {
-    secureZero(buf)
-}
-
 function encrypt(
     key: Uint8Array,
     plaintext: Uint8Array,
@@ -36,29 +32,25 @@ function encrypt(
         throw new Error('IV must be 12 bytes for AES-GCM')
     }
 
-    const k = Buffer.from(key)
+    // Use a shared view to avoid extra key copies; caller-owned key material is not zeroized here.
+    const k = toBufferView(key)
+    const cipher = createCipheriv('aes-256-gcm', k, toBufferView(iv))
 
-    try {
-        const cipher = createCipheriv('aes-256-gcm', k, toBufferView(iv))
+    if (options?.aad) {
+        cipher.setAAD(toBufferView(options.aad))
+    }
 
-        if (options?.aad) {
-            cipher.setAAD(toBufferView(options.aad))
-        }
+    const ciphertext = Buffer.concat([
+        cipher.update(toBufferView(plaintext)),
+        cipher.final()
+    ])
 
-        const ciphertext = Buffer.concat([
-            cipher.update(toBufferView(plaintext)),
-            cipher.final()
-        ])
+    const tag = cipher.getAuthTag()
 
-        const tag = cipher.getAuthTag()
-
-        return {
-            ciphertext: new Uint8Array(ciphertext.buffer, ciphertext.byteOffset, ciphertext.byteLength),
-            iv: new Uint8Array(iv.buffer, iv.byteOffset, iv.byteLength),
-            tag: new Uint8Array(tag.buffer, tag.byteOffset, tag.byteLength)
-        }
-    } finally {
-        wipe(k)
+    return {
+        ciphertext: new Uint8Array(ciphertext.buffer, ciphertext.byteOffset, ciphertext.byteLength),
+        iv: new Uint8Array(iv.buffer, iv.byteOffset, iv.byteLength),
+        tag: new Uint8Array(tag.buffer, tag.byteOffset, tag.byteLength)
     }
 }
 
@@ -79,34 +71,30 @@ function decrypt(
         throw new Error('Tag must be 16 bytes for AES-GCM')
     }
 
-    const k = Buffer.from(key)
+    // Use a shared view to avoid extra key copies; caller-owned key material is not zeroized here.
+    const k = toBufferView(key)
+    const decipher = createDecipheriv(
+        'aes-256-gcm',
+        k,
+        toBufferView(data.iv)
+    )
 
-    try {
-        const decipher = createDecipheriv(
-            'aes-256-gcm',
-            k,
-            toBufferView(data.iv)
-        )
-
-        if (options?.aad) {
-            decipher.setAAD(toBufferView(options.aad))
-        }
-
-        decipher.setAuthTag(toBufferView(data.tag))
-
-        const plaintext = Buffer.concat([
-            decipher.update(toBufferView(data.ciphertext)),
-            decipher.final()
-        ])
-
-        return new Uint8Array(
-            plaintext.buffer,
-            plaintext.byteOffset,
-            plaintext.byteLength
-        )
-    } finally {
-        wipe(k)
+    if (options?.aad) {
+        decipher.setAAD(toBufferView(options.aad))
     }
+
+    decipher.setAuthTag(toBufferView(data.tag))
+
+    const plaintext = Buffer.concat([
+        decipher.update(toBufferView(data.ciphertext)),
+        decipher.final()
+    ])
+
+    return new Uint8Array(
+        plaintext.buffer,
+        plaintext.byteOffset,
+        plaintext.byteLength
+    )
 }
 
 function sha512(data: Uint8Array): Uint8Array {

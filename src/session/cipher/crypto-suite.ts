@@ -88,8 +88,8 @@ function computeMac(key: Uint8Array, data: Uint8Array, length: number): Uint8Arr
 
 function verifyMac(key: Uint8Array, data: Uint8Array, mac: Uint8Array, length: number): void {
     assertMacLength(mac, length)
-    const expected = Buffer.from(computeMac(key, data, length))
-    const actual = Buffer.from(mac.subarray(0, length))
+    const expected = toBufferView(computeMac(key, data, length))
+    const actual = toBufferView(mac.subarray(0, length))
     if (!timingSafeEqual(expected, actual)) {
         throw new Error('MAC verification failed')
     }

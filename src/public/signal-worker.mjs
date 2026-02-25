@@ -14,32 +14,24 @@ function encrypt(key, plaintext, options) {
     if (key.length !== KEY_LENGTH) throw new Error('Key must be 32 bytes')
     const iv = options?.iv ?? randomBytes(IV_LENGTH)
     if (iv.length !== IV_LENGTH) throw new Error('IV must be 12 bytes for AES-GCM')
-    const k = Buffer.from(key)
-    try {
-        const cipher = createCipheriv('aes-256-gcm', k, toBufferView(iv))
-        if (options?.aad) cipher.setAAD(toBufferView(options.aad))
-        const ciphertext = Buffer.concat([cipher.update(toBufferView(plaintext)), cipher.final()])
-        const tag = cipher.getAuthTag()
-        return { ciphertext: new Uint8Array(ciphertext), iv: new Uint8Array(iv), tag: new Uint8Array(tag) }
-    } finally {
-        k.fill(0)
-    }
+    const k = toBufferView(key)
+    const cipher = createCipheriv('aes-256-gcm', k, toBufferView(iv))
+    if (options?.aad) cipher.setAAD(toBufferView(options.aad))
+    const ciphertext = Buffer.concat([cipher.update(toBufferView(plaintext)), cipher.final()])
+    const tag = cipher.getAuthTag()
+    return { ciphertext: new Uint8Array(ciphertext), iv: new Uint8Array(iv), tag: new Uint8Array(tag) }
 }
 
 function decrypt(key, data, options) {
     if (key.length !== KEY_LENGTH) throw new Error('Key must be 32 bytes')
     if (data.iv.length !== IV_LENGTH) throw new Error('IV must be 12 bytes for AES-GCM')
     if (data.tag.length !== TAG_LENGTH) throw new Error('Tag must be 16 bytes for AES-GCM')
-    const k = Buffer.from(key)
-    try {
-        const decipher = createDecipheriv('aes-256-gcm', k, toBufferView(data.iv))
-        if (options?.aad) decipher.setAAD(toBufferView(options.aad))
-        decipher.setAuthTag(toBufferView(data.tag))
-        const plaintext = Buffer.concat([decipher.update(toBufferView(data.ciphertext)), decipher.final()])
-        return new Uint8Array(plaintext)
-    } finally {
-        k.fill(0)
-    }
+    const k = toBufferView(key)
+    const decipher = createDecipheriv('aes-256-gcm', k, toBufferView(data.iv))
+    if (options?.aad) decipher.setAAD(toBufferView(options.aad))
+    decipher.setAuthTag(toBufferView(data.tag))
+    const plaintext = Buffer.concat([decipher.update(toBufferView(data.ciphertext)), decipher.final()])
+    return new Uint8Array(plaintext)
 }
 
 const sha512 = (data) => new Uint8Array(createHash('sha512').update(toBufferView(data)).digest())
