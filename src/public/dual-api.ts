@@ -149,19 +149,29 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
 
     const run = async <K extends keyof WorkerResultMap>(request: Extract<SignalWorkerRequest, { readonly type: K }>): Promise<WorkerResultMap[K]> => {
         if (closed) throw new Error('async worker pool is closed')
-        const state = workers[roundRobin % workers.length]!
-        roundRobin += 1
+        let selectedIndex = -1
+        for (let i = 0; i < workers.length; i++) {
+            const candidateIndex = (roundRobin + i) % workers.length
+            const candidate = workers[candidateIndex]!
+            if (!candidate.alive) continue
+            if (candidate.pendingCount >= maxPendingPerWorker) continue
+            selectedIndex = candidateIndex
+            break
+        }
 
-        if (!state.alive || state.pendingCount >= maxPendingPerWorker) {
+        if (selectedIndex < 0) {
             throw new Error('async worker backpressure: too many pending jobs')
         }
+
+        const state = workers[selectedIndex]!
+        roundRobin = selectedIndex + 1
 
         const id = nextRequestId++
         state.pendingCount += 1
 
         return await new Promise<WorkerResultMap[K]>((resolve, reject) => {
             pending.set(id, {
-                workerIndex: workers.indexOf(state),
+                workerIndex: selectedIndex,
                 reject,
                 resolve: resolve as (value: unknown) => void,
             })

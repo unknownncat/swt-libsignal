@@ -7,6 +7,7 @@ import { BaseKeyType, ChainType } from '../../src/ratchet-types'
 import { SessionDecryptFailed } from '../../src/signal-errors'
 import { crypto } from '../../src/crypto'
 import { initCrypto } from '../../src/curve'
+import { CbcHmacSuite } from '../../src/session/cipher/crypto-suite'
 
 const VERSION_BYTE = 0x33
 const HMAC_DERIVE_MESSAGE_KEY = Uint8Array.of(1)
@@ -64,8 +65,24 @@ function buildAuthenticatedWhisperMessage(params: {
 
   const messageKey = deriveMessageKey(chain, params.counter)
   const [cipherKey, macKey, aadKey] = deriveWhisperKeys(messageKey)
+  const associatedData = CbcHmacSuite.buildAssociatedData({
+    senderIdentityKey: params.session.indexInfo.remoteIdentityKey,
+    receiverIdentityKey: params.ourIdentityPub,
+    versionByte: VERSION_BYTE,
+    message: {
+      ephemeralKey: params.remoteEphemeral,
+      counter: params.counter,
+      previousCounter: params.previousCounter,
+    },
+    aadKey,
+  })
   const payload = params.ciphertextPayload
-    ?? packCiphertext(crypto.encrypt(cipherKey, params.plaintext ?? new Uint8Array([1, 2, 3]), { aad: aadKey.subarray(0, 16) }))
+    ?? CbcHmacSuite.encryptPayload({
+      cipherKey,
+      macKey,
+      plaintext: params.plaintext ?? new Uint8Array([1, 2, 3]),
+      associatedData,
+    })
 
   const proto = WhisperMessageEncoder.encodeWhisperMessage({
     ephemeralKey: params.remoteEphemeral,
@@ -74,8 +91,8 @@ function buildAuthenticatedWhisperMessage(params: {
     ciphertext: payload,
   })
 
-  // Mirrors SessionCipher.doDecryptWhisperMessage MAC input sizing (messageEnd + 67).
-  const macInput = new Uint8Array(proto.length + 68)
+  // Mirrors transport MAC input used by SessionCipher encrypt/decrypt paths.
+  const macInput = new Uint8Array(proto.length + 67)
   macInput.set(params.session.indexInfo.remoteIdentityKey, 0)
   macInput.set(params.ourIdentityPub, 33)
   macInput[66] = VERSION_BYTE

@@ -21,7 +21,7 @@ import { enqueue } from '../../job_queue'
 import { getSignalLogger } from '../../internal/logger'
 import { TEXT_ENCODER, zero32 } from '../../internal/constants/crypto'
 import {
-    GcmSuite,
+    CbcHmacSuite,
     buildDecryptTransportMacInput,
     buildMessageMetadata,
     buildTransportMacInput
@@ -33,6 +33,8 @@ const HKDF_INFO_MESSAGE_KEYS = TEXT_ENCODER.encode('WhisperMessageKeys')
 const HKDF_INFO_RATCHET = TEXT_ENCODER.encode('WhisperRatchet')
 const HMAC_DERIVE_MESSAGE_KEY = Uint8Array.of(1)
 const HMAC_DERIVE_CHAIN_KEY = Uint8Array.of(2)
+const MAX_MESSAGE_KEYS_PER_CHAIN = 2_000
+const MAX_MESSAGE_KEYS_PER_SESSION = 8_000
 
 export class SessionCipher {
     private readonly addr: ProtocolAddress
@@ -51,7 +53,7 @@ export class SessionCipher {
         this.addrStr = protocolAddress.toString()
         this.storage = storage
         this.compatMode = options.compatMode ?? 'strict'
-        this.cryptoSuite = options.cryptoSuite ?? GcmSuite
+        this.cryptoSuite = options.cryptoSuite ?? CbcHmacSuite
         this.warnCompat = options.warn ?? ((message: string) => { console.warn(message) })
         this.warnLegacyCbcHmacUsageOnce()
     }
@@ -407,6 +409,7 @@ export class SessionCipher {
         })
 
         chain.messageKeys.delete(message.counter)
+        this.enforceMessageKeyBudget(snapshot)
 
         delete snapshot.pendingPreKey
         session.replaceWith(snapshot)
@@ -416,7 +419,7 @@ export class SessionCipher {
     private fillMessageKeys(chain: ChainState, targetCounter: number): void {
         if (chain.chainKey.counter >= targetCounter) return
 
-        const maxFutureMessages = 2000
+        const maxFutureMessages = MAX_MESSAGE_KEYS_PER_CHAIN
         const newMessages = targetCounter - chain.chainKey.counter
 
         //- Validar limite de mensagens futuras
@@ -448,6 +451,35 @@ export class SessionCipher {
 
         chain.chainKey.key = key
         chain.chainKey.counter = counter
+    }
+
+    private enforceMessageKeyBudget(session: SessionEntry): void {
+        let totalKeys = 0
+        const globalOrder: Array<{ chain: ChainState; counter: number }> = []
+
+        for (const [, chain] of session.chains()) {
+            totalKeys += chain.messageKeys.size
+
+            while (chain.messageKeys.size > MAX_MESSAGE_KEYS_PER_CHAIN) {
+                const oldestCounter = chain.messageKeys.keys().next().value as number | undefined
+                if (oldestCounter === undefined) break
+                chain.messageKeys.delete(oldestCounter)
+                totalKeys -= 1
+            }
+
+            for (const counter of chain.messageKeys.keys()) {
+                globalOrder.push({ chain, counter })
+            }
+        }
+
+        if (totalKeys <= MAX_MESSAGE_KEYS_PER_SESSION) return
+
+        let toEvict = totalKeys - MAX_MESSAGE_KEYS_PER_SESSION
+        for (let i = 0; i < globalOrder.length && toEvict > 0; i++) {
+            const item = globalOrder[i]!
+            if (!item.chain.messageKeys.delete(item.counter)) continue
+            toEvict -= 1
+        }
     }
 
     private async maybeStepRatchet(

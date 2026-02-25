@@ -171,9 +171,10 @@ function dequeBurst(iterations: number): void {
     }
 }
 
-ensureGc()
-
 const isTestMode = process.env.BENCH_TEST_MODE === '1'
+if (!isTestMode) {
+    ensureGc()
+}
 const iterations = isTestMode ? 5_000 : 200_000
 const warmupRounds = isTestMode ? 1 : 5
 const rounds = isTestMode ? 2 : 20

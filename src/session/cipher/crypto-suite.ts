@@ -229,7 +229,7 @@ export function buildDecryptTransportMacInput(
 ): { macInput: Uint8Array; messageProto: Uint8Array; messageEnd: number } {
     const messageEnd = messageBuffer.byteLength - 8
     const messageProto = messageBuffer.subarray(1, messageEnd)
-    const macInput = new Uint8Array(messageEnd + 67)
+    const macInput = new Uint8Array(messageProto.byteLength + 67)
     macInput.set(senderIdentityKey)
     macInput.set(receiverIdentityKey, 33)
     macInput[66] = versionByte

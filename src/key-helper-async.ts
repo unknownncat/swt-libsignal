@@ -14,7 +14,7 @@ export const generateSignedPreKeyAsync = generateSignedPreKey
 export const generatePreKeyAsync = generatePreKey
 
 export async function generateRegistrationIdAsync(): Promise<number> {
-    const bytes = await new Promise<Buffer>((resolve, reject) => {
+    const bytes = await new Promise<Uint8Array>((resolve, reject) => {
         randomBytes(2, (error, buffer) => {
             if (error) {
                 reject(error)

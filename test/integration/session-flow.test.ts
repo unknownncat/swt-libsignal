@@ -16,14 +16,13 @@ describe('session integration flow', () => {
 
     const aliceIdentity = await signalCrypto.generateIdentityKeyPair()
     const bobIdentity = await signalCrypto.generateIdentityKeyPair()
-    const bobSignIdentity = await signalCrypto.generateIdentityKeyPair()
     const aliceReg = generateRegistrationId()
     const bobReg = generateRegistrationId()
 
     await aliceStorage.storeBootstrap({ pubKey: aliceIdentity.publicKey, privKey: aliceIdentity.privateKey }, aliceReg)
     await bobStorage.storeBootstrap({ pubKey: bobIdentity.publicKey, privKey: bobIdentity.privateKey }, bobReg)
 
-    const bobSignedPreKey = await generateSignedPreKey(bobSignIdentity, 11)
+    const bobSignedPreKey = await generateSignedPreKey(bobIdentity, 11)
     const bobPreKey = await generatePreKey(7)
 
     bobAdapter.set('signedprekey:11', { pubKey: bobSignedPreKey.keyPair.publicKey, privKey: bobSignedPreKey.keyPair.privateKey })
@@ -34,7 +33,7 @@ describe('session integration flow', () => {
 
     const aliceBuilder = new SessionBuilder(aliceStorage, aliceToBob)
     await aliceBuilder.initOutgoing({
-      identityKey: bobSignIdentity.publicKey,
+      identityKey: bobIdentity.publicKey,
       registrationId: bobReg,
       preKey: { keyId: 7, publicKey: bobPreKey.keyPair.publicKey },
       signedPreKey: {
@@ -50,7 +49,14 @@ describe('session integration flow', () => {
     const first = await aliceCipher.encrypt(new TextEncoder().encode('hello bob'))
     expect(first.type).toBe(3)
 
-    await expect(bobCipher.decryptPreKeyWhisperMessage(first.body)).rejects.toThrow('MAC verification failed')
+    await expect(bobCipher.decryptPreKeyWhisperMessage(first.body)).resolves.toEqual(new TextEncoder().encode('hello bob'))
+
+    const second = await aliceCipher.encrypt(new TextEncoder().encode('follow-up'))
+    if (second.type === 3) {
+      await expect(bobCipher.decryptPreKeyWhisperMessage(second.body)).resolves.toEqual(new TextEncoder().encode('follow-up'))
+    } else {
+      await expect(bobCipher.decryptWhisperMessage(second.body)).resolves.toEqual(new TextEncoder().encode('follow-up'))
+    }
 
     expect(await aliceCipher.hasOpenSession()).toBe(true)
     await aliceCipher.closeOpenSession()

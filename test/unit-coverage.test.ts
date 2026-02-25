@@ -224,6 +224,16 @@ describe('storage/runtime/utils/logger/deque', () => {
 
     await runMigrations(adapter, 1, 2)
   })
+
+  it('supports disabling TOFU trust on first use', async () => {
+    const adapter = new InMemoryStorage<unknown>()
+    const store = createSessionStorage(adapter, { trustOnFirstUse: false })
+    const candidate = new Uint8Array([1, 2, 3])
+
+    await expect(store.isTrustedIdentity('carol', candidate)).resolves.toBe(false)
+    await store.migrateLegacyIdentityStorage('carol', candidate)
+    await expect(store.isTrustedIdentity('carol', candidate)).resolves.toBe(true)
+  })
 })
 
 describe('crypto async + encoding + barrel modules', () => {

@@ -5,6 +5,7 @@ import {
   CbcHmacSuite,
   GcmSuite,
   buildDecryptTransportMacInput,
+  buildTransportMacInput,
   type CryptoSuite,
   type MessageMetadata,
 } from '../../src/session/cipher/crypto-suite'
@@ -214,6 +215,26 @@ function tamperCiphertextAndReMac(params: {
 }
 
 describe('crypto suites', () => {
+  it('builds identical transport MAC input on encrypt/decrypt paths', () => {
+    const sender = sequence(32, 1)
+    const receiver = sequence(32, 33)
+    const proto = WhisperMessageEncoder.encodeWhisperMessage({
+      ephemeralKey: sequence(32, 90),
+      counter: 11,
+      previousCounter: 7,
+      ciphertext: sequence(64, 120),
+    })
+
+    const encryptedMacInput = buildTransportMacInput(sender, receiver, VERSION_BYTE, proto)
+    const body = new Uint8Array(1 + proto.length + 8)
+    body[0] = VERSION_BYTE
+    body.set(proto, 1)
+    const transport = buildDecryptTransportMacInput(sender, receiver, VERSION_BYTE, body)
+
+    expect(transport.messageProto).toEqual(proto)
+    expect(transport.macInput).toEqual(encryptedMacInput)
+  })
+
   it('roundtrips payload encrypt/decrypt for each suite', () => {
     const suites: readonly CryptoSuite[] = [GcmSuite, CbcHmacSuite]
     const metadata: MessageMetadata = {

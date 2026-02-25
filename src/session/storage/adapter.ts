@@ -1,6 +1,6 @@
 import { SessionRecord } from '../record/index'
 import { fromBase64, toBase64 } from '../utils'
-import type { MaybePromise, StorageAdapter } from './types'
+import type { MaybePromise, StorageAdapter, TransactionalStorageAdapter } from './types'
 import { deleteValue, getMany, getValue, setMany, setValue } from './runtime'
 
 function sessionKey(addr: string) { return `session:${addr}` }
@@ -12,6 +12,9 @@ const REG_ID = 'registration_id'
 
 type SerializedRecord = ReturnType<SessionRecord['serialize']>
 type IdentityTuple = readonly [pubKey: Uint8Array, privKey: Uint8Array]
+export interface SessionStorageOptions {
+    trustOnFirstUse?: boolean
+}
 
 type LegacyIdentityValue = { readonly pubKey: string; readonly privKey: string }
 type IdentityValue = { readonly pubKey: Uint8Array; readonly privKey: Uint8Array }
@@ -31,6 +34,10 @@ function maybeAwait<T>(value: MaybePromise<T>): Promise<T> {
     return Promise.resolve(value)
 }
 
+function hasTransaction(adapter: StorageAdapter<unknown>): adapter is StorageAdapter<unknown> & TransactionalStorageAdapter<unknown> {
+    return typeof (adapter as Partial<TransactionalStorageAdapter<unknown>>).transaction === 'function'
+}
+
 function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
     if (a.length !== b.length) return false
     let diff = 0
@@ -40,13 +47,16 @@ function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
     return diff === 0
 }
 
-export function createSessionStorage(adapter: StorageAdapter<unknown>) {
+export function createSessionStorage(adapter: StorageAdapter<unknown>, options: SessionStorageOptions = {}) {
+    const trustOnFirstUse = options.trustOnFirstUse ?? true
+
     return {
         async isTrustedIdentity(addressName: string, identityKey: Uint8Array): Promise<boolean> {
             const key = identityKeyF(addressName)
             const stored = await maybeAwait(getValue(adapter, key) as MaybePromise<Uint8Array | string | undefined>)
 
             if (!stored) {
+                if (!trustOnFirstUse) return false
                 await maybeAwait(setValue(adapter, key, identityKey))
                 return true
             }
@@ -113,8 +123,15 @@ export function createSessionStorage(adapter: StorageAdapter<unknown>) {
         },
 
         async storeSessionAndRemovePreKey(addressName: string, record: SessionRecord, preKeyId: number): Promise<void> {
-            await maybeAwait(setValue(adapter, sessionKey(addressName), record.serialize()))
-            await maybeAwait(deleteValue(adapter, preKeyKey(preKeyId)))
+            if (hasTransaction(adapter)) {
+                await maybeAwait(adapter.transaction(async (tx) => {
+                    await maybeAwait(setValue(tx, sessionKey(addressName), record.serialize()))
+                    await maybeAwait(deleteValue(tx, preKeyKey(preKeyId)))
+                }))
+            } else {
+                await maybeAwait(setValue(adapter, sessionKey(addressName), record.serialize()))
+                await maybeAwait(deleteValue(adapter, preKeyKey(preKeyId)))
+            }
             await maybeAwait(adapter.zeroize?.(preKeyKey(preKeyId)) ?? undefined)
         },
 
