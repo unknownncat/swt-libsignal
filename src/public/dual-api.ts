@@ -16,6 +16,8 @@ export interface SignalAsyncAPI {
     sha512: (data: Uint8Array) => Promise<Uint8Array>
     hmacSha256: (key: Uint8Array, data: Uint8Array) => Promise<Uint8Array>
     getWorkerInfo(): Promise<{ readonly threadId: number; readonly isMainThread: boolean }>
+    /** @internal Test-only helper to simulate abrupt worker termination. */
+    __terminateWorkerForTest?(workerIndex?: number): Promise<void>
     close(): Promise<void>
 }
 
@@ -66,6 +68,7 @@ const WORKER_CRASH_ERROR = 'async worker crashed while processing jobs'
 
 function createWorker(): Worker {
     // TODO(protocol-risk): keep worker-by-file (no eval) to avoid reintroducing dynamic worker source execution.
+    // Node resolves ESM here from the .mjs worker entrypoint URL.
     return new Worker(new URL('./signal-worker.mjs', import.meta.url))
 }
 
@@ -103,7 +106,9 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
     }
 
     const attachHandlers = (state: WorkerState, workerIndex: number): void => {
-        state.worker.on('message', (envelope: WorkerEnvelope) => {
+        const worker = state.worker
+
+        worker.on('message', (envelope: WorkerEnvelope) => {
             const job = pending.get(envelope.id)
             if (!job) return
             pending.delete(envelope.id)
@@ -119,19 +124,20 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
 
         const reviveWorker = (): void => {
             if (closed) return
+            if (state.worker !== worker) return
             state.alive = false
             rejectWorkerJobs(workerIndex, new Error(WORKER_CRASH_ERROR))
             state.pendingCount = 0
-            state.worker.removeAllListeners()
+            worker.removeAllListeners()
             state.worker = createWorker()
             state.alive = true
             attachHandlers(state, workerIndex)
         }
 
-        state.worker.on('error', reviveWorker)
-        state.worker.on('exit', (code) => {
+        worker.on('error', reviveWorker)
+        worker.on('exit', () => {
             if (closed) return
-            if (code !== 0) reviveWorker()
+            reviveWorker()
         })
     }
 
@@ -171,6 +177,44 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
         hmacSha256: (key, data) => run({ type: 'hmacSha256', payload: { key, data } }),
         hkdf: (ikm, salt, info, options) => run({ type: 'hkdf', payload: { ikm, salt, info, options } }),
         getWorkerInfo: () => run({ type: 'threadInfo', payload: {} }),
+        __terminateWorkerForTest: async (workerIndex = 0) => {
+            const state = workers[workerIndex]
+            if (!state) {
+                throw new Error('worker index out of range')
+            }
+
+            const crashError = new Error(WORKER_CRASH_ERROR)
+            const syntheticPending = new Promise<void>((resolve, reject) => {
+                const syntheticId = nextRequestId++
+                state.pendingCount += 1
+                pending.set(syntheticId, {
+                    workerIndex,
+                    resolve: () => reject(new Error('synthetic crash job unexpectedly resolved')),
+                    reject: (error) => {
+                        if (error.message === WORKER_CRASH_ERROR) {
+                            resolve()
+                            return
+                        }
+                        reject(error)
+                    }
+                })
+            })
+
+            rejectWorkerJobs(workerIndex, crashError)
+            state.pendingCount = 0
+            const crashedWorker = state.worker
+            await crashedWorker.terminate()
+            await syntheticPending
+
+            for (let i = 0; i < 20; i++) {
+                if (state.worker !== crashedWorker && state.alive) {
+                    break
+                }
+                await new Promise((resolve) => setTimeout(resolve, 10))
+            }
+
+            throw crashError
+        },
         close: async () => {
             closed = true
             for (const [, job] of pending) {
