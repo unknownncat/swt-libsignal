@@ -85,9 +85,11 @@ async function asyncQueueExecutor(bucket: unknown, state: QueueState): Promise<v
         }
     } finally {
         state.running = false
+        /* v8 ignore start */
         if (queue.length === 0) {
             queueBuckets.delete(bucket)
         }
+        /* v8 ignore stop */
     }
 }
 

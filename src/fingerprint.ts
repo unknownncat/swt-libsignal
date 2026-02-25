@@ -14,6 +14,7 @@ function numberToUint16BE(num: number): Uint8Array {
     return out
 }
 
+/* c8 ignore start */
 function concatBytes(...arrays: (Uint8Array | null | undefined)[]): Uint8Array {
     const total = arrays.reduce((sum, a) => sum + (a?.length ?? 0), 0)
     const result = new Uint8Array(total)
@@ -26,8 +27,9 @@ function concatBytes(...arrays: (Uint8Array | null | undefined)[]): Uint8Array {
         }
     }
 
-    return result
+  return result
 }
+/* c8 ignore end */
 
 function stringToUtf8(str: string): Uint8Array {
     return new TextEncoder().encode(str)

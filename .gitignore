@@ -28,7 +28,7 @@ pids/
 # =========================
 # Coverage / Test
 # =========================
-coverage/
+/coverage/
 .nyc_output/
 *.lcov
 tmp/

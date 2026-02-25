@@ -27,7 +27,10 @@ export async function runStorageRuntimeCheck(): Promise<StorageRuntimeCheckResul
 
   const tmpDir = join(process.cwd(), 'tmp')
   await mkdir(tmpDir, { recursive: true })
-  const filePath = join(tmpDir, 'docs-storage-runtime.json')
+  const filePath = join(
+    tmpDir,
+    `docs-storage-runtime-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`
+  )
   const fileAdapter = new AtomicJsonFileAsyncStorageAdapter(filePath, { flushEveryWrites: 1 })
 
   try {

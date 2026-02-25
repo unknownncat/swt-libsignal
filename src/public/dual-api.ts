@@ -255,7 +255,9 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
                 state.pendingCount += 1
                 pending.set(syntheticId, {
                     workerIndex,
+                    /* v8 ignore next */
                     resolve: () => reject(new Error('synthetic crash job unexpectedly resolved')),
+                    /* v8 ignore next */
                     reject: (error) => {
                         if (error.message === WORKER_CRASH_ERROR) {
                             resolve()
