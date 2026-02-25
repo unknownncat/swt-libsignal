@@ -1,11 +1,10 @@
-# Crypto (síncrono e assíncrono)
+# Crypto
 
-## O que existe
+## Superfícies
 
-- `crypto.encrypt/decrypt`: AES-256-GCM síncrono.
-- `crypto.sha512`, `crypto.hmacSha256`, `crypto.hkdf`.
-- `cryptoAsync.*`: mesmas operações com WebCrypto async.
-- `createSignalSync/createSignalAsync`: façade sync/async (async com worker threads).
+- `crypto` para operações síncronas.
+- `cryptoAsync` para operações assíncronas.
+- `createSignalSync` e `createSignalAsync` para fachada sync/async em APIs unificadas.
 
 ## Exemplo síncrono
 
@@ -19,9 +18,9 @@ const plaintext = new TextEncoder().encode('mensagem')
 
 const sealed = crypto.encrypt(key, plaintext, { iv, aad })
 const opened = crypto.decrypt(key, sealed, { aad })
-
-console.log(new TextDecoder().decode(opened))
 ```
+
+Explicação: o bloco usa AES-256-GCM da API síncrona com AAD autenticado.
 
 ## Exemplo assíncrono
 
@@ -29,17 +28,17 @@ console.log(new TextDecoder().decode(opened))
 import { cryptoAsync } from '@unknownncat/swt-libsignal'
 
 const key = new Uint8Array(32).fill(3)
-const payload = new TextEncoder().encode('async ok')
+const payload = new TextEncoder().encode('async')
 
 const encrypted = await cryptoAsync.encrypt(key, payload)
 const decrypted = await cryptoAsync.decrypt(key, encrypted)
 const digest = await cryptoAsync.sha512(payload)
-
-console.log(decrypted.length, digest.length)
 ```
+
+Explicação: a API assíncrona preserva os mesmos formatos de entrada e saída da versão síncrona.
 
 ## Boas práticas
 
-- Nunca reutilize `(key, iv)` no AES-GCM.
-- Use `aad` para metadados autenticados (ex.: tipo da mensagem).
-- Limpe buffers sensíveis após uso quando possível.
+- Não reutilizar o par `(key, iv)` no AES-GCM.
+- Incluir metadados críticos em `aad`.
+- Limpar buffers sensíveis após uso quando aplicável.

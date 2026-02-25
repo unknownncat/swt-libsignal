@@ -1,52 +1,49 @@
-# swt-libsignal — documentação simples e prática
+# swt-libsignal docs
 
-> **Status do projeto:** biblioteca em evolução, com foco didático e de compatibilidade de API. **Não recomendada para produção**.
+> Status: biblioteca em evolução com foco didático e de compatibilidade de API. Não recomendada para produção sem hardening adicional.
 
-Este diretório reúne a documentação da biblioteca `@unknownncat/swt-libsignal` de forma direta, com exemplos executáveis.
+Este diretório documenta as APIs públicas e inclui scripts executáveis em `docs/examples` para validar fluxos reais da biblioteca.
 
-## O que você encontra aqui
+## Requisitos
 
-- Guia rápido de uso e visão geral.
-- Referência de APIs públicas e tipos.
-- Fluxos de sessão e storage.
-- Criptografia síncrona e assíncrona.
-- Protobuf, serialização e utilitários.
-- Scripts de manutenção e contrato público.
+- Node.js `>=20`
+- TypeScript opcional
 
-## Instalação e requisitos
-
-Node.js `20.x` (LTS) ou `>= 22`
-
-- TypeScript (opcional, mas recomendado)
+## Instalação
 
 ```bash
 npm install @unknownncat/swt-libsignal
 ```
 
-## Exemplo rápido (criptografia síncrona)
+Explicação: instala a biblioteca publicada no npm.
+
+## Exemplo rápido
 
 ```ts
-import { crypto } from "@unknownncat/swt-libsignal";
+import { crypto } from '@unknownncat/swt-libsignal'
 
-const key = new Uint8Array(32).fill(7);
-const message = new TextEncoder().encode("hello");
+const key = new Uint8Array(32).fill(7)
+const message = new TextEncoder().encode('hello')
 
-const encrypted = crypto.encrypt(key, message);
-const decrypted = crypto.decrypt(key, encrypted);
+const encrypted = crypto.encrypt(key, message)
+const decrypted = crypto.decrypt(key, encrypted)
 
-console.log(new TextDecoder().decode(decrypted)); // hello
+console.log(new TextDecoder().decode(decrypted))
 ```
 
-## Avisos de segurança (leia antes de integrar)
+Explicação: usa AES-256-GCM da API `crypto` para cifrar e decifrar no mesmo processo.
 
-- **Validação de identidade:** sempre valide chave de identidade remota (fingerprint, PIN compartilhado, QR etc.) antes de confiar em sessão.
-- **Assinatura de signed prekey:** valide a assinatura do signed prekey com a identidade do par antes de aceitar material de sessão.
+## Exemplos executáveis
 
-## Índice da documentação
+- [run-all.ts](./examples/run-all.ts)
+- [crypto-runtime-check.ts](./examples/crypto-runtime-check.ts)
+- [session-runtime-check.ts](./examples/session-runtime-check.ts)
+- [group-runtime-check.ts](./examples/group-runtime-check.ts)
+- [repository-runtime-check.ts](./examples/repository-runtime-check.ts)
+- [storage-runtime-check.ts](./examples/storage-runtime-check.ts)
+
+Os scripts acima são executados na suíte de testes para garantir que os exemplos documentados continuem válidos.
+
+## Índice da API
 
 - [API geral](./api/index.md)
-- [Exemplos](./examples/public-api.ts)
-
-## Escopo coberto
-
-A documentação em `docs/api` cobre módulos públicos, sessões, storage, tipos de ratchet, protobuf, curva/assinatura, utilitários assíncronos/síncronos e scripts do projeto.

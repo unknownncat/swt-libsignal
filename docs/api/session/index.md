@@ -1,17 +1,15 @@
-# Sessões
+# Sessões 1:1
 
-Este módulo concentra criação, manutenção e uso de sessão criptográfica.
+Módulos centrais:
 
-## Componentes
+- `SessionBuilder`
+- `SessionCipher`
+- `SessionRecord` e `SessionEntry`
 
-- `SessionBuilder`: inicializa sessão de saída/entrada.
-- `SessionCipher`: cifra/decifra mensagens.
-- `SessionRecord` e `SessionEntry`: estado serializável da sessão.
-
-## Exemplo simples de estado de sessão (serialização)
+## Exemplo de estado serializável
 
 ```ts
-import { SessionRecord, SessionEntry, BaseKeyType } from '@unknownncat/swt-libsignal'
+import { BaseKeyType, SessionEntry, SessionRecord } from '@unknownncat/swt-libsignal'
 
 const entry = new SessionEntry()
 entry.registrationId = 1234
@@ -32,22 +30,7 @@ entry.indexInfo = {
 
 const record = new SessionRecord()
 record.setSession(entry)
-
-const serialized = record.serialize()
-const restored = SessionRecord.deserialize(serialized)
-
-console.log(restored.getSessions().length)
+const restored = SessionRecord.deserialize(record.serialize())
 ```
 
-## Fluxo resumido real
-
-1. Gere identidade + prekeys.
-2. Monte `PreKeyBundle` remoto.
-3. `SessionBuilder.initOutgoing(bundle)`.
-4. Use `SessionCipher.encrypt/decrypt*`.
-5. Persista `SessionRecord` no storage.
-
-## Segurança
-
-- Em troca de identidade, trate divergência como potencial ataque.
-- Feche sessão (`closeOpenSession`) quando necessário para rotação.
+Explicação: o estado de sessão é serializado para persistência e restaurado sem perda de estrutura.

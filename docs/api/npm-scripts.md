@@ -7,6 +7,7 @@
 - `npm run lint`: type-check sem emitir arquivos.
 - `npm run test:exports`: valida snapshot de exportações públicas.
 - `npm run benchmark`: benchmark da job queue.
+- `npm run examples:run`: executa todos os runtime-checks de `docs/examples`.
 - `npm run proto:gen`: regenera arquivos protobuf.
 
 ## Fluxo recomendado para contribuição
@@ -17,3 +18,5 @@ npm run test
 npm run test:exports
 npm run build
 ```
+
+Explicação: esse fluxo confirma tipos, testes, contrato público e build final antes de publicar mudanças.

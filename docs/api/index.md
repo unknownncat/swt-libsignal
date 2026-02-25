@@ -1,32 +1,37 @@
-# API do swt-libsignal
+# API index
 
-Este índice organiza a API pública por assunto.
+Este índice organiza a API pública por domínio funcional.
 
-## Primeiros passos
+## Base
 
-1. Use `ProtocolAddress` para endereçar pares.
-2. Gere identidade, prekeys e signed prekey.
-3. Configure storage com `createSessionStorage`.
-4. Use `SessionBuilder` + `SessionCipher` para sessão e mensagens.
+- [crypto.md](./crypto.md)
+- [curve.md](./curve.md)
+- [fingerprint.md](./fingerprint.md)
+- [job-queue.md](./job-queue.md)
+- [key-helper.md](./key-helper.md)
+- [protocol-address.md](./protocol-address.md)
+- [protobuf.md](./protobuf.md)
+- [ratchet-types.md](./ratchet-types.md)
+- [signal-errors.md](./signal-errors.md)
+- [sync-vs-async.md](./sync-vs-async.md)
 
-## Referência por arquivo
+## Sessão 1:1
 
-- [crypto.md](./crypto.md): AES-GCM, SHA-512, HMAC-SHA256, HKDF (sync/async).
-- [curve.md](./curve.md): identidades Ed25519, DH X25519, assinatura/verificação.
-- [fingerprint.md](./fingerprint.md): comparação de identidade humana.
-- [job-queue.md](./job-queue.md): fila serial por bucket.
-- [key-helper.md](./key-helper.md): geração de identidade, registration ID, prekeys.
-- [protocol-address.md](./protocol-address.md): parse e serialização de endereço.
-- [protobuf.md](./protobuf.md): encode/decode de mensagens protobuf.
-- [ratchet-types.md](./ratchet-types.md): enums usados no estado de sessão.
-- [signal-errors.md](./signal-errors.md): hierarquia de erros públicos.
-- [sync-vs-async.md](./sync-vs-async.md): quando usar cada API.
-- [session/index.md](./session/index.md): sessão ponta-a-ponta.
-- [session/storage-adapter.md](./session/storage-adapter.md): adapters e persistência.
-- [npm-scripts.md](./npm-scripts.md): scripts de build/teste/benchmark.
-- [public-contract.md](./public-contract.md): snapshot/exportações públicas.
-- [versioning-policy.md](./versioning-policy.md): compatibilidade e mudanças.
+- [session/index.md](./session/index.md)
+- [session/builder/session-builder.md](./session/builder/session-builder.md)
+- [session/cipher/session-cipher.md](./session/cipher/session-cipher.md)
+- [session/record/session-record.md](./session/record/session-record.md)
+- [session/storage-adapter.md](./session/storage-adapter.md)
 
-## Aviso rápido
+## Signal layer
 
-Mesmo com API estável, a biblioteca deve ser tratada como **não pronta para produção**.
+- [signal/index.md](./signal/index.md)
+- [signal/group.md](./signal/group.md)
+- [signal/libsignal-repository.md](./signal/libsignal-repository.md)
+- [signal/lid-mapping.md](./signal/lid-mapping.md)
+
+## Projeto
+
+- [npm-scripts.md](./npm-scripts.md)
+- [public-contract.md](./public-contract.md)
+- [versioning-policy.md](./versioning-policy.md)

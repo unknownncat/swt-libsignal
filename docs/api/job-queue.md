@@ -1,27 +1,18 @@
 # Job queue
 
-`enqueue(bucket, job)` executa jobs em série por bucket, preservando ordem.
+`enqueue(bucket, job)` executa jobs em série por bucket.
 
 ## Exemplo
 
 ```ts
-import { enqueue, flushQueue } from '@unknownncat/swt-libsignal'
+import { enqueue } from '@unknownncat/swt-libsignal'
 
 const order: number[] = []
+
 await Promise.all([
-  enqueue('sync', async () => { order.push(1); return 1 }),
-  enqueue('sync', async () => { order.push(2); return 2 }),
+  enqueue('peer.1', async () => { order.push(1) }),
+  enqueue('peer.1', async () => { order.push(2) }),
 ])
-
-await flushQueue('sync')
-console.log(order) // [1, 2]
 ```
 
-## Timeout
-
-```ts
-await enqueue('bucket', async (signal) => {
-  if (signal.aborted) throw signal.reason
-  return 'ok'
-}, { timeoutMs: 50 })
-```
+Explicação: os jobs do mesmo bucket preservam ordem de execução e evitam corridas de estado.

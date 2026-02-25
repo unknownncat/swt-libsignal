@@ -35,7 +35,8 @@
     "lint": "tsc --noEmit",
     "test:exports": "tsx scripts/check-api-exports.ts",
     "test:exports:update": "tsx scripts/check-api-exports.ts --write",
-    "benchmark": "cross-env NODE_OPTIONS=--expose-gc tsx scripts/bench-job-queue.ts"
+    "benchmark": "cross-env NODE_OPTIONS=--expose-gc tsx scripts/bench-job-queue.ts",
+    "examples:run": "tsx docs/examples/run-all.ts"
   },
   "engines": {
     "node": ">=20 <21 || >=22"

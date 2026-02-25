@@ -1,31 +1,29 @@
 # Sync vs Async
 
-## Quando usar `sync`
+## Use sync quando
 
-- Carga baixa/média.
-- Fluxos curtos no mesmo thread.
-- Menor overhead operacional.
+- O processo é simples e local.
+- A latência mínima por operação é prioridade.
 
-## Quando usar `async`
+## Use async quando
 
-- I/O ou CPU concorrente.
-- Desejo de separar trabalho criptográfico via worker.
-- APIs de storage assíncronas.
+- Você precisa isolar operações em worker.
+- Há múltiplas tarefas criptográficas concorrentes.
 
-## Exemplo combinando as duas
+## Exemplo
 
 ```ts
-import { createSignalSync, createSignalAsync } from '@unknownncat/swt-libsignal'
+import { createSignalAsync, createSignalSync } from '@unknownncat/swt-libsignal'
 
 const syncApi = createSignalSync()
 const asyncApi = await createSignalAsync({ workers: 1 })
 
 const key = new Uint8Array(32).fill(5)
 const msg = new TextEncoder().encode('dual')
+const sealed = syncApi.encrypt(key, msg)
+const opened = await asyncApi.decrypt(key, sealed)
 
-const a = syncApi.encrypt(key, msg)
-const b = await asyncApi.decrypt(key, a)
-
-console.log(new TextDecoder().decode(b))
 await asyncApi.close()
 ```
+
+Explicação: o exemplo combina `encrypt` sync e `decrypt` async no mesmo formato de pacote criptográfico.

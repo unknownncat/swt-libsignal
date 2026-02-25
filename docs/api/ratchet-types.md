@@ -17,3 +17,5 @@ const ours = BaseKeyType.OURS
 
 console.log(sending, ours)
 ```
+
+Explicação: essas constantes tipam direção de chain e origem de base key nos objetos de sessão.

@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readFileSync, mkdirSync, renameSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
-import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 
 describe('scripts and docs examples', () => {
   it('runs check-api-exports script and writes contract/snapshot', async () => {
@@ -45,7 +42,6 @@ describe('scripts and docs examples', () => {
     const snapshot = join(cwd, 'docs/api/public-exports.snapshot.json')
     const old = readFileSync(snapshot, 'utf8')
     try {
-      // snapshot inválido para cobrir branch de erro
       await import('node:fs/promises').then(({ writeFile }) => writeFile(snapshot, '["__mismatch__"]\n', 'utf8'))
       vi.resetModules()
       await expect(import('../scripts/check-api-exports.ts')).rejects.toThrow('Public exports changed')
@@ -64,12 +60,27 @@ describe('scripts and docs examples', () => {
     delete process.env.BENCH_TEST_MODE
   })
 
-  it('executes docs example module without throwing', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+  it('executes docs runtime example scripts without throwing', async () => {
     vi.resetModules()
-    await import('../docs/examples/public-api.ts')
-    expect(log).toHaveBeenCalled()
-    log.mockRestore()
+    const mod = await import('../docs/examples/run-all.ts')
+    const summary = await mod.runAllExamples()
+
+    expect(summary.crypto.syncRoundTrip).toBe(true)
+    expect(summary.crypto.asyncRoundTrip).toBe(true)
+    expect(summary.crypto.dualRoundTrip).toBe(true)
+    expect(summary.crypto.hkdfLength).toBe(64)
+    expect(summary.crypto.digestLength).toBe(64)
+
+    expect(summary.session.firstMessageOk).toBe(true)
+    expect(summary.session.secondMessageOk).toBe(true)
+
+    expect(summary.group.plaintextMatch).toBe(true)
+    expect(summary.repository.oneToOneOk).toBe(true)
+    expect(summary.repository.groupOk).toBe(true)
+
+    expect(summary.storage.registrationId).toBe(777)
+    expect(summary.storage.managerValueLength).toBe(4)
+    expect(summary.storage.persistedValueLength).toBe(5)
   })
 
   it('keeps an isolated temp folder setup for script side effects', () => {

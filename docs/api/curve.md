@@ -1,16 +1,15 @@
-# Curve e identidade (Ed25519/X25519)
+# Curve e identidade
 
 ## APIs
 
-- `initCrypto()`: inicializa `libsodium`.
-- `signalCrypto.generateIdentityKeyPair()`: par Ed25519.
-- `signalCrypto.generateDHKeyPair()`: par X25519.
-- `signalCrypto.sign/verify`.
-- `signalCrypto.calculateAgreement`.
-- `signalCrypto.convertIdentityPublicToX25519` e `convertIdentityPrivateToX25519`.
-- `generateKeyPair`, `calculateSignature` (atalhos públicos).
+- `initCrypto`
+- `signalCrypto.generateIdentityKeyPair`
+- `signalCrypto.generateDHKeyPair`
+- `signalCrypto.sign` e `signalCrypto.verify`
+- `signalCrypto.calculateAgreement`
+- Conversões Ed25519 -> X25519 via `convertIdentityPublicToX25519` e `convertIdentityPrivateToX25519`
 
-## Exemplo prático
+## Exemplo
 
 ```ts
 import { initCrypto, signalCrypto } from '@unknownncat/swt-libsignal'
@@ -25,13 +24,8 @@ const sharedA = signalCrypto.calculateAgreement(dhB.publicKey, dhA.privateKey)
 const sharedB = signalCrypto.calculateAgreement(dhA.publicKey, dhB.privateKey)
 
 const msg = new TextEncoder().encode('signed prekey')
-const sig = signalCrypto.sign(identity.privateKey, msg)
-const ok = signalCrypto.verify(identity.publicKey, msg, sig)
-
-console.log(sharedA.length, sharedB.length, ok)
+const signature = signalCrypto.sign(identity.privateKey, msg)
+const valid = signalCrypto.verify(identity.publicKey, msg, signature)
 ```
 
-## Segurança
-
-- Sempre valide assinatura do signed prekey com a identidade pública esperada.
-- Nunca aceite troca de identidade silenciosa em produção.
+Explicação: o exemplo valida assinatura Ed25519 e acordo de chave X25519 na mesma sessão de runtime.

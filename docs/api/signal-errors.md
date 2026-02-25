@@ -26,3 +26,5 @@ try {
   }
 }
 ```
+
+Explicação: a hierarquia de erros permite tratar falhas criptográficas específicas sem perder o fallback genérico.

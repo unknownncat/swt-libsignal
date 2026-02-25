@@ -31,3 +31,5 @@ const preKey = PreKeyWhisperMessageCodec.encode({
 const decodedPreKey = PreKeyWhisperMessageCodec.decode(preKey)
 console.log(decodedWhisper.counter, decodedPreKey.registrationId)
 ```
+
+Explicação: os codecs preservam campos do envelope Whisper/PreKey para transporte e parsing determinístico.

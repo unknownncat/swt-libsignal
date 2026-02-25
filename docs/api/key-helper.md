@@ -1,13 +1,13 @@
 # Key helper
 
-Funções utilitárias para setup de conta/dispositivo.
+Utilitários para bootstrap de identidade e prekeys.
 
 ## APIs
 
-- `generateIdentityKeyPair` / `generateIdentityKeyPairAsync`
-- `generateRegistrationId` / `generateRegistrationIdAsync`
-- `generateSignedPreKey` / `generateSignedPreKeyAsync`
-- `generatePreKey` / `generatePreKeyAsync`
+- `generateIdentityKeyPair` e `generateIdentityKeyPairAsync`
+- `generateRegistrationId` e `generateRegistrationIdAsync`
+- `generateSignedPreKey` e `generateSignedPreKeyAsync`
+- `generatePreKey` e `generatePreKeyAsync`
 
 ## Exemplo
 
@@ -23,11 +23,6 @@ const identity = await generateIdentityKeyPair()
 const registrationId = generateRegistrationId()
 const signedPreKey = await generateSignedPreKey(identity, 1)
 const oneTimePreKey = await generatePreKey(1)
-
-console.log(registrationId, signedPreKey.keyId, oneTimePreKey.keyId)
 ```
 
-## Segurança
-
-- Guarde chaves privadas em armazenamento seguro.
-- Rotacione prekeys periodicamente.
+Explicação: o fluxo gera material mínimo para iniciar uma sessão X3DH.
