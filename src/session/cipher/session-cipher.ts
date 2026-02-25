@@ -321,15 +321,16 @@ export class SessionCipher {
         const messageProto = messageBuffer.subarray(1, messageEnd)
         const message = WhisperMessageEncoder.decodeWhisperMessage(messageProto)
 
-        // TODO(protocol-risk): ratchet state mutates before full authentication/decrypt success.
-        await this.maybeStepRatchet(session, message.ephemeralKey, message.previousCounter)
+        // Transactional decrypt: mutate only the snapshot and commit atomically at the end.
+        const snapshot = session.clone()
 
-        const chain = session.getChain(message.ephemeralKey)
+        await this.maybeStepRatchet(snapshot, message.ephemeralKey, message.previousCounter)
+
+        const chain = snapshot.getChain(message.ephemeralKey)
         if (!chain || chain.chainType === ChainType.SENDING) {
             throw new SessionStateError('Tried to decrypt on a sending chain')
         }
 
-        // TODO(protocol-risk): chain/message-key counters mutate before MAC verification.
         this.fillMessageKeys(chain, message.counter)
 
         if (!chain.messageKeys.has(message.counter)) {
@@ -346,7 +347,7 @@ export class SessionCipher {
 
         const ourIdentity = await this.storage.getOurIdentity()
         const macInput = new Uint8Array(messageEnd + 67)
-        macInput.set(session.indexInfo.remoteIdentityKey)
+        macInput.set(snapshot.indexInfo.remoteIdentityKey)
         macInput.set(ourIdentity.pubKey, 33)
         macInput[66] = this._encodeTupleByte(PROTOCOL_VERSION, PROTOCOL_VERSION)
         macInput.set(messageProto, 67)
@@ -371,7 +372,8 @@ export class SessionCipher {
 
         chain.messageKeys.delete(message.counter)
 
-        delete session.pendingPreKey
+        delete snapshot.pendingPreKey
+        session.replaceWith(snapshot)
         return plaintext
     }
 

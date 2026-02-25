@@ -26,6 +26,23 @@ export class SessionEntry {
         return this.toString()
     }
 
+    clone(): SessionEntry {
+        return SessionEntry.deserialize(this.serialize())
+    }
+
+    replaceWith(snapshot: SessionEntry): void {
+        const next = SessionEntry.deserialize(snapshot.serialize())
+        this.registrationId = next.registrationId
+        this.currentRatchet = next.currentRatchet
+        this.indexInfo = next.indexInfo
+        if (next.pendingPreKey) {
+            this.pendingPreKey = next.pendingPreKey
+        } else {
+            delete this.pendingPreKey
+        }
+        this._chains = next._chains
+    }
+
     addChain(key: Uint8Array, value: ChainState): void {
         assertUint8(key)
         const id = toBase64(key)
