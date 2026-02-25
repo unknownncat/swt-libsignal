@@ -3,8 +3,10 @@
 | Symbol | Kind |
 | --- | --- |
 | `BaseKeyType` | export |
+| `CbcHmacSuite` | export |
 | `ChainType` | export |
 | `FingerprintGenerator` | export |
+| `GcmSuite` | export |
 | `MessageCounterError` | export |
 | `PreKeyError` | export |
 | `PreKeyWhisperMessageCodec` | export |

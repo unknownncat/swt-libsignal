@@ -1,11 +1,11 @@
-import { timingSafeEqual } from 'node:crypto'
 import { PROTOCOL_VERSION } from '../constants'
 import type {
     EncryptResult,
     DecryptWithSessionResult,
     SessionCipherStorage,
     WhisperMessageProto,
-    PreKeyWhisperMessageProto
+    PreKeyWhisperMessageProto,
+    SessionCipherOptions
 } from './types'
 import { WhisperMessageEncoder } from './encoding'
 import { assertUint8, toBase64 } from '../utils'
@@ -20,6 +20,14 @@ import { SessionError, SessionDecryptFailed, SessionStateError, UntrustedIdentit
 import { enqueue } from '../../job_queue'
 import { getSignalLogger } from '../../internal/logger'
 import { TEXT_ENCODER, zero32 } from '../../internal/constants/crypto'
+import {
+    GcmSuite,
+    buildDecryptTransportMacInput,
+    buildMessageMetadata,
+    buildTransportMacInput
+} from './crypto-suite'
+import type { CompatMode } from '../builder/types'
+import type { CryptoSuite } from './crypto-suite'
 
 const HKDF_INFO_MESSAGE_KEYS = TEXT_ENCODER.encode('WhisperMessageKeys')
 const HKDF_INFO_RATCHET = TEXT_ENCODER.encode('WhisperRatchet')
@@ -30,18 +38,34 @@ export class SessionCipher {
     private readonly addr: ProtocolAddress
     private readonly addrStr: string
     private readonly storage: SessionCipherStorage
+    private readonly compatMode: CompatMode
+    private readonly cryptoSuite: CryptoSuite
+    private readonly warnCompat: (message: string) => void
+    private warnedLegacyCbcHmac = false
 
-    constructor(storage: SessionCipherStorage, protocolAddress: ProtocolAddress) {
+    constructor(storage: SessionCipherStorage, protocolAddress: ProtocolAddress, options: SessionCipherOptions = {}) {
         if (!(protocolAddress instanceof ProtocolAddress)) {
             throw new TypeError('protocolAddress must be a ProtocolAddress')
         }
         this.addr = protocolAddress
         this.addrStr = protocolAddress.toString()
         this.storage = storage
+        this.compatMode = options.compatMode ?? 'strict'
+        this.cryptoSuite = options.cryptoSuite ?? GcmSuite
+        this.warnCompat = options.warn ?? ((message: string) => { console.warn(message) })
+        this.warnLegacyCbcHmacUsageOnce()
     }
 
     toString(): string {
         return `<SessionCipher(${this.addrStr})>`
+    }
+
+    private warnLegacyCbcHmacUsageOnce(): void {
+        if (this.warnedLegacyCbcHmac) return
+        if (this.compatMode !== 'legacy') return
+        if (this.cryptoSuite.name !== 'cbc-hmac') return
+        this.warnedLegacyCbcHmac = true
+        this.warnCompat('[swt-libsignal][session] cbc-hmac cryptoSuite with legacy compatMode increases downgrade/interoperability risk; prefer compatMode=\"strict\".')
     }
 
     private _encodeTupleByte(n1: number, n2: number): number {
@@ -114,36 +138,44 @@ export class SessionCipher {
 
             let result: EncryptResult
             try {
-                // TODO(protocol-risk): payload crypto is AES-256-GCM and uses derived aadKey.slice(0,16) as AAD.
-                const encrypted = await crypto.encrypt(cipherKey, data, { aad: aadKey.subarray(0, 16) })
-
-                const packedCiphertext = new Uint8Array(
-                    encrypted.iv.length + encrypted.ciphertext.length + encrypted.tag.length
-                )
-                packedCiphertext.set(encrypted.iv, 0)
-                packedCiphertext.set(encrypted.ciphertext, encrypted.iv.length)
-                packedCiphertext.set(encrypted.tag, encrypted.iv.length + encrypted.ciphertext.length)
-
-                const msg: WhisperMessageProto = {
+                const versionByte = this._encodeTupleByte(PROTOCOL_VERSION, PROTOCOL_VERSION)
+                const messageMeta = {
                     ephemeralKey: session.currentRatchet.ephemeralKeyPair.pubKey,
                     counter: chain.chainKey.counter,
-                    previousCounter: session.currentRatchet.previousCounter,
+                    previousCounter: session.currentRatchet.previousCounter
+                }
+                const associatedData = this.cryptoSuite.buildAssociatedData({
+                    senderIdentityKey: ourIdentity.pubKey,
+                    receiverIdentityKey: remoteIdentityKey,
+                    versionByte,
+                    message: messageMeta,
+                    aadKey
+                })
+                const packedCiphertext = this.cryptoSuite.encryptPayload({
+                    cipherKey,
+                    macKey,
+                    plaintext: data,
+                    associatedData
+                })
+
+                const msg: WhisperMessageProto = {
+                    ephemeralKey: messageMeta.ephemeralKey,
+                    counter: messageMeta.counter,
+                    previousCounter: messageMeta.previousCounter,
                     ciphertext: packedCiphertext
                 }
 
                 const msgBuf = WhisperMessageEncoder.encodeWhisperMessage(msg)
-                const macInput = new Uint8Array(msgBuf.byteLength + 67)
-
-                macInput.set(ourIdentity.pubKey)
-                macInput.set(remoteIdentityKey, 33)
-                macInput[66] = this._encodeTupleByte(PROTOCOL_VERSION, PROTOCOL_VERSION)
-                macInput.set(msgBuf, 67)
-
-                // TODO(protocol-risk): transport MAC currently truncates HMAC-SHA256 to 8 bytes.
-                const mac = crypto.hmacSha256(macKey, macInput)
+                const macInput = buildTransportMacInput(
+                    ourIdentity.pubKey,
+                    remoteIdentityKey,
+                    versionByte,
+                    msgBuf
+                )
+                const mac = this.cryptoSuite.mac(macKey, macInput, 8)
 
                 const body = new Uint8Array(msgBuf.byteLength + 9)
-                body[0] = this._encodeTupleByte(PROTOCOL_VERSION, PROTOCOL_VERSION)
+                body[0] = versionByte
                 body.set(msgBuf, 1)
                 body.set(mac.subarray(0, 8), msgBuf.byteLength + 1)
 
@@ -159,7 +191,7 @@ export class SessionCipher {
 
                     const preKeyBuf = WhisperMessageEncoder.encodePreKeyWhisperMessage(preKeyMsg)
                     const finalBody = new Uint8Array(1 + preKeyBuf.byteLength)
-                    finalBody[0] = this._encodeTupleByte(PROTOCOL_VERSION, PROTOCOL_VERSION)
+                    finalBody[0] = versionByte
                     finalBody.set(preKeyBuf, 1)
 
                     result = { type: 3, body: finalBody, registrationId: session.registrationId }
@@ -233,7 +265,10 @@ export class SessionCipher {
                 record = new SessionRecord()
             }
 
-            const builder = new SessionBuilder(this.storage, this.addr)
+            const builder = new SessionBuilder(this.storage, this.addr, {
+                compatMode: this.compatMode,
+                warn: this.warnCompat
+            })
             const preKeyId = await builder.initIncoming(record, preKeyProto)
 
             const session = record.getSession(preKeyProto.baseKey)
@@ -346,29 +381,30 @@ export class SessionCipher {
         )
 
         const ourIdentity = await this.storage.getOurIdentity()
-        const macInput = new Uint8Array(messageEnd + 67)
-        macInput.set(snapshot.indexInfo.remoteIdentityKey)
-        macInput.set(ourIdentity.pubKey, 33)
-        macInput[66] = this._encodeTupleByte(PROTOCOL_VERSION, PROTOCOL_VERSION)
-        macInput.set(messageProto, 67)
+        const versionByte = this._encodeTupleByte(PROTOCOL_VERSION, PROTOCOL_VERSION)
+        const transport = buildDecryptTransportMacInput(
+            snapshot.indexInfo.remoteIdentityKey,
+            ourIdentity.pubKey,
+            versionByte,
+            messageBuffer
+        )
+        const associatedData = this.cryptoSuite.buildAssociatedData({
+            senderIdentityKey: snapshot.indexInfo.remoteIdentityKey,
+            receiverIdentityKey: ourIdentity.pubKey,
+            versionByte,
+            message: buildMessageMetadata(message),
+            aadKey: keys[2]!
+        })
 
         const mac = messageBuffer.subarray(-8)
 
-        this.verifyMAC(macInput, keys[1]!, mac, 8)
-
-        if (message.ciphertext.length < 28) {
-            throw new Error('Invalid ciphertext payload')
-        }
-
-        const iv = message.ciphertext.subarray(0, 12)
-        const tag = message.ciphertext.subarray(message.ciphertext.length - 16)
-        const ciphertext = message.ciphertext.subarray(12, message.ciphertext.length - 16)
-
-        const plaintext = crypto.decrypt(
-            keys[0]!,
-            { ciphertext, iv, tag },
-            { aad: keys[2]!.subarray(0, 16) }
-        )
+        this.verifyMAC(transport.macInput, keys[1]!, mac, 8)
+        const plaintext = this.cryptoSuite.decryptPayload({
+            cipherKey: keys[0]!,
+            macKey: keys[1]!,
+            payload: message.ciphertext,
+            associatedData
+        })
 
         chain.messageKeys.delete(message.counter)
 
@@ -498,16 +534,6 @@ export class SessionCipher {
     }
 
     private verifyMAC(macInput: Uint8Array, key: Uint8Array, mac: Uint8Array, length: number): void {
-        if (mac.length < length) {
-            throw new Error('MAC too short')
-        }
-
-        const computed = crypto.hmacSha256(key, macInput)
-        const expected = Buffer.from(computed.subarray(0, length))
-        const actual = Buffer.from(mac.subarray(0, length))
-
-        if (!timingSafeEqual(expected, actual)) {
-            throw new Error('MAC verification failed')
-        }
+        this.cryptoSuite.verifyMac(key, macInput, mac, length)
     }
 }

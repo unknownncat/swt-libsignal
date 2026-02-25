@@ -3,6 +3,7 @@ export type {
   DecryptResult,
   DecryptWithSessionResult,
   SessionCipherStorage,
+  SessionCipherOptions,
   WhisperMessageProto,
   PreKeyWhisperMessageProto,
 } from '../session/cipher/types'

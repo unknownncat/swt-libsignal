@@ -1,6 +1,8 @@
 import type { MaybePromise } from '../storage/types'
 import type { SessionEntry } from "../record/session-entry"
 import type { SessionRecord } from "../record/session-record"
+import type { CompatMode } from '../builder/types'
+import type { CryptoSuite } from './crypto-suite'
 
 export interface EncryptResult {
     type: number
@@ -44,4 +46,10 @@ export interface SessionCipherStorage {
     removePreKey(preKeyId: number): MaybePromise<void>
     storeSessionAndRemovePreKey?(addressName: string, record: SessionRecord, preKeyId: number): MaybePromise<void>
     loadPreKeyPair?(preKeyId: number | undefined, signedPreKeyId: number): MaybePromise<readonly [{ pubKey: Uint8Array; privKey: Uint8Array } | undefined, { pubKey: Uint8Array; privKey: Uint8Array } | undefined]>
+}
+
+export interface SessionCipherOptions {
+    compatMode?: CompatMode
+    cryptoSuite?: CryptoSuite
+    warn?: (message: string) => void
 }

@@ -1,7 +1,9 @@
 [
   "BaseKeyType",
+  "CbcHmacSuite",
   "ChainType",
   "FingerprintGenerator",
+  "GcmSuite",
   "MessageCounterError",
   "PreKeyError",
   "PreKeyWhisperMessageCodec",
