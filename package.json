@@ -71,7 +71,6 @@
   "devDependencies": {
     "@types/node": "^20.19.33",
     "@vitest/coverage-v8": "^4.0.18",
-    "libsignal": "git+https://github.com/WhiskeySockets/libsignal-node.git",
     "cpy-cli": "^7.0.0",
     "cross-env": "^10.1.0",
     "fast-check": "^3.23.2",
