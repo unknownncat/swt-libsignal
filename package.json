@@ -69,7 +69,7 @@
     "libsodium-wrappers": "^0.8.2"
   },
   "devDependencies": {
-    "@types/node": "^20.19.33",
+    "@types/node": "^25.3.1",
     "@vitest/coverage-v8": "^4.0.18",
     "libsignal": "git+https://github.com/WhiskeySockets/libsignal-node.git",
     "cpy-cli": "^7.0.0",
