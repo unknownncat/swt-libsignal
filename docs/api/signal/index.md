@@ -7,6 +7,8 @@ Esta seção documenta a camada de compatibilidade inspirada no [Baileys](https:
 - `makeLibSignalRepository` para operações de sessão e grupo.
 - `LIDMappingStore` para mapeamentos PN/LID.
 - `signal/group/*` para Sender Keys (grupos).
+- `compat/libsignal/*` para integração com ecossistema `libsignal-node` (incluindo subpaths `src/crypto`, `src/curve`, `src/protobufs` e `src/keyhelper`).
+- Veja detalhes em [libsignal-compat.md](./libsignal-compat.md).
 
 ## Exemplo rápido
 

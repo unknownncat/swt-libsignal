@@ -207,6 +207,43 @@ export const CbcHmacSuite: CryptoSuite = {
     }
 }
 
+export const LegacyLibsignalSuite: CryptoSuite = {
+    name: 'legacy-libsignal-cbc',
+    buildAssociatedData(context: AssociatedDataContext): Uint8Array {
+        return context.aadKey
+    },
+    encryptPayload(context: EncryptPayloadContext): Uint8Array {
+        if (context.associatedData.length < 16) {
+            throw new Error('Invalid associated data for legacy ciphertext encryption')
+        }
+        const iv = context.associatedData.subarray(0, 16)
+        const cipher = createCipheriv('aes-256-cbc', toBufferView(context.cipherKey), toBufferView(iv))
+        const ciphertext = Buffer.concat([
+            cipher.update(toBufferView(context.plaintext)),
+            cipher.final()
+        ])
+        return new Uint8Array(ciphertext.buffer, ciphertext.byteOffset, ciphertext.byteLength)
+    },
+    decryptPayload(context: DecryptPayloadContext): Uint8Array {
+        if (context.associatedData.length < 16) {
+            throw new Error('Invalid associated data for legacy ciphertext decryption')
+        }
+        const iv = context.associatedData.subarray(0, 16)
+        const decipher = createDecipheriv('aes-256-cbc', toBufferView(context.cipherKey), toBufferView(iv))
+        const plaintext = Buffer.concat([
+            decipher.update(toBufferView(context.payload)),
+            decipher.final()
+        ])
+        return new Uint8Array(plaintext.buffer, plaintext.byteOffset, plaintext.byteLength)
+    },
+    mac(key: Uint8Array, data: Uint8Array, length: number): Uint8Array {
+        return computeMac(key, data, length)
+    },
+    verifyMac(key: Uint8Array, data: Uint8Array, mac: Uint8Array, length: number): void {
+        verifyMac(key, data, mac, length)
+    }
+}
+
 export function buildTransportMacInput(
     senderIdentityKey: Uint8Array,
     receiverIdentityKey: Uint8Array,

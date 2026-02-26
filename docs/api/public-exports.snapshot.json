@@ -8,6 +8,7 @@
   "GroupCipher",
   "GroupSessionBuilder",
   "LIDMappingStore",
+  "LegacyLibsignalSuite",
   "MessageCounterError",
   "PreKeyError",
   "PreKeyWhisperMessageCodec",

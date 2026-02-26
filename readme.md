@@ -15,6 +15,10 @@ O projeto oferece:
 - Suporte opcional a workers.
 - Controles de concorrência por fila (enqueue).
 - Boas práticas de segurança: validação de identidade, assinatura de signed prekey e descarte de chaves.
+- Camada de compatibilidade `libsignal` (`/libsignal` e subpaths `/src/*`).
+- Interoperabilidade validada com `WhiskeySockets/libsignal-node`.
+- Adapter SQLite assíncrono com transação (`SqliteAsyncStorageAdapter`).
+- Fuzz/property tests de protocolo e CI de segurança/supply-chain.
 
 A documentação completa está disponível na pasta [docs](https://github.com/unknownncat/swt-libsignal/blob/main/docs).
 

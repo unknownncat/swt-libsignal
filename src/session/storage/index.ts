@@ -4,6 +4,7 @@ export * from './in-memory'
 export * from './migrations'
 export * from './adapter'
 export * from './atomic-json-file'
+export * from './sqlite-async'
 
 import type {
     BatchDeleteEntry,

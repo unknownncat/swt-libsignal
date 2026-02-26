@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SessionBuilder } from '../../src/session/builder/session-builder'
 import { ProtocolAddress } from '../../src/protocol_address'
 import { signalCrypto } from '../../src/curve'
+import * as legacyCurve from '../../src/compat/libsignal/src/curve'
 
 describe('SessionBuilder X3DH compat mode', () => {
   const storage = {
@@ -60,5 +61,36 @@ describe('SessionBuilder X3DH compat mode', () => {
     } finally {
       convertSpy.mockRestore()
     }
+  })
+
+  it('strict mode accepts explicit prefixed x25519 identity keys', () => {
+    const builder = new SessionBuilder(storage, new ProtocolAddress('peer', 1))
+    const prefixedPub = new Uint8Array(33).fill(9)
+    prefixedPub[0] = 0x05
+    const localPriv = new Uint8Array(32).fill(3)
+
+    const resolvedPriv = (builder as unknown as {
+      resolveOurIdentityDhPrivateKey: (privateKey: Uint8Array, publicKey: Uint8Array) => Uint8Array
+    }).resolveOurIdentityDhPrivateKey(localPriv, prefixedPub)
+
+    const resolvedRemote = (builder as unknown as {
+      resolveTheirIdentityDhPublicKey: (publicKey: Uint8Array) => Uint8Array
+    }).resolveTheirIdentityDhPublicKey(prefixedPub)
+
+    expect(resolvedPriv).toBe(localPriv)
+    expect(resolvedRemote).toEqual(prefixedPub.subarray(1))
+  })
+
+  it('accepts libsignal-style signed prekey signatures with prefixed curve identity key', () => {
+    const builder = new SessionBuilder(storage, new ProtocolAddress('peer', 1))
+    const identity = legacyCurve.generateKeyPair()
+    const signedPreKey = legacyCurve.generateKeyPair()
+    const signature = legacyCurve.calculateSignature(identity.privKey, signedPreKey.pubKey)
+
+    const isValid = (builder as unknown as {
+      verifySignedPreKeySignature: (identityKey: Uint8Array, signedPreKeyPublicKey: Uint8Array, signature: Uint8Array) => boolean
+    }).verifySignedPreKeySignature(identity.pubKey, signedPreKey.pubKey, signature)
+
+    expect(isValid).toBe(true)
   })
 })

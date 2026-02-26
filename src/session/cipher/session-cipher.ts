@@ -17,6 +17,7 @@ import { SessionRecord, type SessionEntry, type ChainState } from '../record/ind
 import { crypto } from '../../crypto'
 import { signalCrypto } from '../../curve'
 import { SessionError, SessionDecryptFailed, SessionStateError, UntrustedIdentityKeyError, MessageCounterError } from '../../signal-errors'
+import { generateKeyPair as generateLegacyCurveKeyPair } from '../../compat/libsignal/src/curve'
 import { enqueue } from '../../job_queue'
 import { getSignalLogger } from '../../internal/logger'
 import { TEXT_ENCODER, zero32 } from '../../internal/constants/crypto'
@@ -505,7 +506,12 @@ export class SessionCipher {
             session.deleteChain(ratchet.ephemeralKeyPair.pubKey)
         }
 
-        const newKp = await signalCrypto.generateDHKeyPair()
+        const newKp = this.compatMode === 'legacy'
+            ? (() => {
+                const legacy = generateLegacyCurveKeyPair()
+                return { publicKey: legacy.pubKey, privateKey: legacy.privKey }
+            })()
+            : await signalCrypto.generateDHKeyPair()
         ratchet.ephemeralKeyPair = {
             pubKey: newKp.publicKey,
             privKey: newKp.privateKey
@@ -513,11 +519,17 @@ export class SessionCipher {
 
         this.calculateRatchet(session, remoteKey, true)
         ratchet.lastRemoteEphemeralKey = remoteKey
+        getSignalLogger()?.debug('ratchet-rotate', {
+            peerId: this.addr.id,
+            previousCounter: ratchet.previousCounter,
+            remoteKeyLength: remoteKey.length
+        })
     }
 
     private calculateRatchet(session: SessionEntry, remoteKey: Uint8Array, sending: boolean): void {
         const ratchet = session.currentRatchet
-        const sharedSecret = signalCrypto.calculateAgreement(remoteKey, ratchet.ephemeralKeyPair.privKey)
+        const remoteDhKey = this.resolveRemoteDhPublicKey(remoteKey)
+        const sharedSecret = signalCrypto.calculateAgreement(remoteDhKey, ratchet.ephemeralKeyPair.privKey)
 
         const masterKeys = this.deriveSecrets(
             sharedSecret,
@@ -535,6 +547,16 @@ export class SessionCipher {
         })
 
         ratchet.rootKey = masterKeys[0]!
+    }
+
+    private resolveRemoteDhPublicKey(remoteKey: Uint8Array): Uint8Array {
+        if (remoteKey.length === 33 && remoteKey[0] === 0x05) {
+            return remoteKey.subarray(1)
+        }
+        if (remoteKey.length === 32) {
+            return remoteKey
+        }
+        throw new Error(`Invalid remote ratchet key length for X25519 DH: ${remoteKey.length}`)
     }
 
     private deriveSecrets(

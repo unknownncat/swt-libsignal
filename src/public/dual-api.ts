@@ -1,5 +1,6 @@
 import { Worker } from 'node:worker_threads'
 import { crypto } from '../crypto'
+import { getSignalLogger } from '../internal/logger'
 
 export interface SignalSyncAPI {
     readonly encrypt: typeof crypto.encrypt
@@ -137,6 +138,10 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
             resolve,
         })
 
+        getSignalLogger()?.debug('worker-dispatch', {
+            workerIndex,
+            pendingJobs: state.pendingCount
+        })
         state.worker.postMessage({ id, request })
     }
 
@@ -181,12 +186,14 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
         const reviveWorker = (): void => {
             if (closed) return
             if (state.worker !== worker) return
+            getSignalLogger()?.error?.('worker-crash', { workerIndex })
             state.alive = false
             rejectWorkerJobs(workerIndex, new Error(WORKER_CRASH_ERROR))
             state.pendingCount = 0
             worker.removeAllListeners()
             state.worker = createWorker()
             state.alive = true
+            getSignalLogger()?.debug('worker-revive', { workerIndex })
             attachHandlers(state, workerIndex)
             drainBuffered()
         }
@@ -202,6 +209,7 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
         const state: WorkerState = { worker: createWorker(), pendingCount: 0, alive: true }
         workers.push(state)
         attachHandlers(state, i)
+        getSignalLogger()?.info?.('worker-ready', { workerIndex: i })
     }
 
     const run = async <K extends keyof WorkerResultMap>(request: Extract<SignalWorkerRequest, { readonly type: K }>): Promise<WorkerResultMap[K]> => {
@@ -219,11 +227,21 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
             }
 
             if (!queueOnBackpressure) {
+                getSignalLogger()?.warn('worker-backpressure', {
+                    mode: 'reject-immediate',
+                    maxPendingJobs,
+                    workerCount
+                })
                 reject(new Error('async worker backpressure: too many pending jobs'))
                 return
             }
 
             if (buffered.length >= maxQueuedJobs) {
+                getSignalLogger()?.warn('worker-backpressure', {
+                    mode: 'queue-full',
+                    maxQueuedJobs,
+                    queuedJobs: buffered.length
+                })
                 reject(new Error('async worker backpressure queue full'))
                 return
             }
@@ -233,6 +251,7 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
                 resolve: resolve as (value: unknown) => void,
                 reject
             })
+            getSignalLogger()?.debug('worker-buffered', { queuedJobs: buffered.length })
         })
     }
 
@@ -299,6 +318,7 @@ export async function createSignalAsync(options: CreateSignalAsyncOptions = {}):
                     await state.worker.terminate()
                 })
             )
+            getSignalLogger()?.info?.('worker-close', { workers: workers.length })
         },
     }
 }

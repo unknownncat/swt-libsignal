@@ -45,6 +45,18 @@ Explicação: usa AES-256-GCM da API `crypto` para cifrar e decifrar no mesmo pr
 
 Os scripts acima são executados na suíte de testes para garantir que os exemplos documentados continuem válidos.
 
+## Segurança e hardening
+
+- [Threat model](./security/threat-model.md)
+- [Security validation](./security/validation.md)
+- Política de reporte: [`SECURITY.md`](../SECURITY.md)
+
+Este projeto inclui validação contínua para:
+
+- interoperabilidade com `libsignal-node` (`npm run test:interop`)
+- fuzz/property tests (`npm run test:fuzz`)
+- pipelines de segurança e supply-chain em `.github/workflows`
+
 ## Índice da API
 
 - [API geral](./api/index.md)

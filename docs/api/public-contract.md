@@ -11,6 +11,7 @@
 | `GroupCipher` | export |
 | `GroupSessionBuilder` | export |
 | `LIDMappingStore` | export |
+| `LegacyLibsignalSuite` | export |
 | `MessageCounterError` | export |
 | `PreKeyError` | export |
 | `PreKeyWhisperMessageCodec` | export |

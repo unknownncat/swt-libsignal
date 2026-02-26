@@ -6,6 +6,8 @@ import { signalCrypto } from '../../curve'
 import { UntrustedIdentityKeyError, PreKeyError } from '../../signal-errors'
 import { enqueue } from '../../job_queue'
 import { getSignalLogger } from '../../internal/logger'
+import { verifySignature as verifyCurveSignature } from '../../compat/libsignal/src/curve'
+import { generateKeyPair as generateLegacyCurveKeyPair } from '../../compat/libsignal/src/curve'
 
 import type {
     PreKeyBundle,
@@ -19,6 +21,12 @@ import type {
 import { HKDF_INFO_WHISPER_TEXT, TEXT_ENCODER, zero32 } from '../../internal/constants/crypto'
 
 const HKDF_INFO_RATCHET = TEXT_ENCODER.encode('WhisperRatchet')
+
+function toBufferView(data: Uint8Array): Buffer {
+    return Buffer.isBuffer(data)
+        ? data
+        : Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+}
 
 export class SessionBuilder {
     private readonly addr: ProtocolAddress
@@ -72,7 +80,7 @@ export class SessionBuilder {
             }
 
             // - Verificar resultado da assinatura
-            const signatureValid = signalCrypto.verify(
+            const signatureValid = this.verifySignedPreKeySignature(
                 device.identityKey,
                 device.signedPreKey.publicKey,
                 device.signedPreKey.signature
@@ -84,7 +92,7 @@ export class SessionBuilder {
                 )
             }
 
-            const baseKey = await signalCrypto.generateDHKeyPair()
+            const baseKey = await this.generateSessionDhKeyPair()
 
             const session = await this.initSession(
                 true,
@@ -202,18 +210,19 @@ export class SessionBuilder {
         // X3DH variant route B:
         // - identity keys remain Ed25519 for trust/signature verification
         // - DH uses explicit Ed25519->X25519 conversions for identity material
-        const ourIdentityDhPriv = this.resolveOurIdentityDhPrivateKey(ourIdentityKey.privKey)
+        const ourIdentityDhPriv = this.resolveOurIdentityDhPrivateKey(ourIdentityKey.privKey, ourIdentityKey.pubKey)
         const theirIdentityDhPub = this.resolveTheirIdentityDhPublicKey(theirIdentityPubKey)
 
         // X3DH DH Calculations (RFC order correto):
         // a1 = DH(ourIdentity, theirSigned)
-        const a1 = signalCrypto.calculateAgreement(theirSignedPubKey!, ourIdentityDhPriv)
+        const theirSignedDhPub = this.resolveRemoteDhPublicKey(theirSignedPubKey!, 'signed prekey public key')
+        const a1 = signalCrypto.calculateAgreement(theirSignedDhPub, ourIdentityDhPriv)
 
         // a2 = DH(theirIdentity, ourSigned)
         const a2 = signalCrypto.calculateAgreement(theirIdentityDhPub, ourSignedKey!.privKey)
 
         // a3 = DH(ourSigned, theirSigned)
-        const a3 = signalCrypto.calculateAgreement(theirSignedPubKey!, ourSignedKey!.privKey)
+        const a3 = signalCrypto.calculateAgreement(theirSignedDhPub, ourSignedKey!.privKey)
 
         // Posição dos valores no shared secret depende de quem é iniciador
         sharedSecret.set(a1, isInitiator ? 32 : 64)
@@ -222,7 +231,11 @@ export class SessionBuilder {
 
         // a4 = DH(ourEphemeral, theirEphemeral) - apenas quando ambos têm ephemeral
         if (ourEphemeralForInitSession && theirEphemeralForInitSession) {
-            const a4 = signalCrypto.calculateAgreement(theirEphemeralForInitSession, ourEphemeralForInitSession.privKey)
+            const theirEphemeralDhPub = this.resolveRemoteDhPublicKey(
+                theirEphemeralForInitSession,
+                'ephemeral public key'
+            )
+            const a4 = signalCrypto.calculateAgreement(theirEphemeralDhPub, ourEphemeralForInitSession.privKey)
             sharedSecret.set(a4, 128)
         }
 
@@ -238,7 +251,7 @@ export class SessionBuilder {
 
         let resolvedEphemeralKP: KeyPair
         if (isInitiator) {
-            const kp = await signalCrypto.generateDHKeyPair()
+            const kp = await this.generateSessionDhKeyPair()
             resolvedEphemeralKP = { pubKey: kp.publicKey, privKey: kp.privateKey }
         } else {
             resolvedEphemeralKP = { pubKey: ourSignedKey!.pubKey, privKey: ourSignedKey!.privKey }
@@ -269,8 +282,9 @@ export class SessionBuilder {
 
     private calculateSendingRatchet(session: SessionEntry, remoteKey: Uint8Array): void {
         const ratchet = session.currentRatchet
+        const remoteDhKey = this.resolveRemoteDhPublicKey(remoteKey, 'ratchet remote key')
         const sharedSecret = signalCrypto.calculateAgreement(
-            remoteKey,
+            remoteDhKey,
             ratchet.ephemeralKeyPair.privKey
         )
 
@@ -307,7 +321,7 @@ export class SessionBuilder {
         return result
     }
 
-    private resolveOurIdentityDhPrivateKey(identityPrivateKey: Uint8Array): Uint8Array {
+    private resolveOurIdentityDhPrivateKey(identityPrivateKey: Uint8Array, identityPublicKey?: Uint8Array): Uint8Array {
         if (identityPrivateKey.length === 64) {
             try {
                 return signalCrypto.convertIdentityPrivateToX25519(identityPrivateKey)
@@ -319,6 +333,10 @@ export class SessionBuilder {
         }
 
         if (identityPrivateKey.length === 32) {
+            if (this.isPrefixedCurvePublicKey(identityPublicKey)) {
+                return identityPrivateKey
+            }
+
             if (this.compatMode === 'legacy') {
                 this.warnLegacyDowngradeOnce('using raw local X25519 identity private key (interop fallback)')
                 return identityPrivateKey
@@ -331,6 +349,10 @@ export class SessionBuilder {
     }
 
     private resolveTheirIdentityDhPublicKey(theirIdentityPubKey: Uint8Array): Uint8Array {
+        if (this.isPrefixedCurvePublicKey(theirIdentityPubKey)) {
+            return theirIdentityPubKey.subarray(1)
+        }
+
         if (theirIdentityPubKey.length !== 32) {
             throw new Error(`Invalid remote identity public key length for X3DH: ${theirIdentityPubKey.length}`)
         }
@@ -349,9 +371,88 @@ export class SessionBuilder {
         }
     }
 
+    private verifySignedPreKeySignature(
+        identityKey: Uint8Array,
+        signedPreKeyPublicKey: Uint8Array,
+        signature: Uint8Array
+    ): boolean {
+        if (!(signature instanceof Uint8Array) || signature.length !== 64) {
+            return false
+        }
+
+        if (this.isPrefixedCurvePublicKey(identityKey)) {
+            return this.verifyLegacyCurveSignature(identityKey, signedPreKeyPublicKey, signature)
+        }
+
+        try {
+            return signalCrypto.verify(identityKey, signedPreKeyPublicKey, signature)
+        } catch {
+            if (this.compatMode !== 'legacy') {
+                return false
+            }
+            return this.verifyLegacyCurveSignature(identityKey, signedPreKeyPublicKey, signature)
+        }
+    }
+
+    private verifyLegacyCurveSignature(
+        identityKey: Uint8Array,
+        signedPreKeyPublicKey: Uint8Array,
+        signature: Uint8Array
+    ): boolean {
+        try {
+            const legacyPub = this.normalizeCurvePublicKey(signedPreKeyPublicKey)
+            return verifyCurveSignature(toBufferView(identityKey), toBufferView(legacyPub), signature, false)
+        } catch {
+            return false
+        }
+    }
+
+    private isPrefixedCurvePublicKey(value: Uint8Array | undefined): boolean {
+        return value instanceof Uint8Array && value.length === 33 && value[0] === 0x05
+    }
+
+    private normalizeCurvePublicKey(publicKey: Uint8Array): Uint8Array {
+        if (this.isPrefixedCurvePublicKey(publicKey)) {
+            return publicKey
+        }
+        if (publicKey.length === 32) {
+            const prefixed = new Uint8Array(33)
+            prefixed[0] = 0x05
+            prefixed.set(publicKey, 1)
+            return prefixed
+        }
+        throw new Error(`Invalid curve public key length: ${publicKey.length}`)
+    }
+
+    private resolveRemoteDhPublicKey(publicKey: Uint8Array, label: string): Uint8Array {
+        if (this.isPrefixedCurvePublicKey(publicKey)) {
+            return publicKey.subarray(1)
+        }
+        if (publicKey.length === 32) {
+            return publicKey
+        }
+        throw new Error(`Invalid ${label} length for X25519 DH: ${publicKey.length}`)
+    }
+
+    private async generateSessionDhKeyPair(): Promise<{ publicKey: Uint8Array; privateKey: Uint8Array }> {
+        if (this.compatMode === 'legacy') {
+            const legacy = generateLegacyCurveKeyPair()
+            return {
+                publicKey: legacy.pubKey,
+                privateKey: legacy.privKey
+            }
+        }
+        return signalCrypto.generateDHKeyPair()
+    }
+
     private warnLegacyDowngradeOnce(reason: string): void {
         if (this.legacyWarningEmitted) return
         this.legacyWarningEmitted = true
+        getSignalLogger()?.warn('compat-fallback-used', {
+            component: 'session-builder',
+            peerId: this.addr.id,
+            reason
+        })
         this.warnCompat(`[swt-libsignal][x3dh][legacy] ${reason}`)
     }
 }
